@@ -1,5 +1,5 @@
-console.log("[auth.js] loaded on", location.href);
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+console.log("[auth.js] loaded on", location.href);
 
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
