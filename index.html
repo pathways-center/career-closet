@@ -1,31 +1,36 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Emory Career Closet</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; }
-      .row { margin: 12px 0; }
-      input { padding: 10px; width: 340px; max-width: 100%; }
-      button { padding: 10px 14px; cursor: pointer; }
-      #status { margin-top: 14px; white-space: pre-wrap; }
-    </style>
-  </head>
-  <body>
-    <h1>Emory Career Closet</h1>
-    <p>Public inventory & reservation system</p>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Career Closet - Login</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    .row { margin: 12px 0; }
+    input { padding: 10px; width: 340px; max-width: 100%; }
+    button { padding: 10px 14px; margin-left: 8px; }
+    pre { background: #f6f6f6; padding: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>Sign in (Email Code)</h2>
 
-    <div class="row">
-      <input id="email" type="email" placeholder="name@emory.edu" />
-    </div>
-    <div class="row">
-      <button id="btnLogin">Send magic link</button>
-      <button id="btnLogout">Logout</button>
-    </div>
+  <div class="row">
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+    <button id="btnSendCode">Send code</button>
+  </div>
 
-    <div id="status"></div>
+  <div class="row">
+    <input id="otp" type="text" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" />
+    <button id="btnVerify">Verify code</button>
+  </div>
 
-    <script type="module" src="./auth.js"></script>
-  </body>
+  <div class="row">
+    <button id="btnLogout" disabled>Logout</button>
+  </div>
+
+  <pre id="status">Loading...</pre>
+
+  <script type="module" src="./auth.js?v=20260107_otp_1"></script>
+</body>
 </html>
