@@ -2,21 +2,20 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const elEmail = document.getElementById("email");
-const btnLogin = document.getElementById("btnLogin");
-const btnLogout = document.getElementById("btnLogout");
-const elStatus = document.getElementById("status");
+function $(id) {
+  return document.getElementById(id);
+}
 
 function setStatus(msg) {
-  elStatus.textContent = msg;
+  const elStatus = $("status");
+  if (elStatus) elStatus.textContent = msg;
 }
 
 function getRedirectTo() {
-  // Keeps "/career-closet/" path on GitHub Pages
-  return window.location.origin + window.location.pathname;
+  const basePath = "/career-closet";
+  return `${window.location.origin}${basePath}/auth/callback/`;
 }
 
 function cleanUrl() {
@@ -36,7 +35,7 @@ async function handleAuthRedirect() {
     return;
   }
 
-  // Implicit flow fallback: redirects back with #access_token=...
+  // Implicit flow fallback
   if (window.location.hash && window.location.hash.includes("access_token=")) {
     const { error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
     cleanUrl();
@@ -48,52 +47,78 @@ async function refreshUi() {
   const { data } = await supabase.auth.getSession();
   const session = data.session;
 
+  const btnLogin = $("btnLogin");
+  const btnLogout = $("btnLogout");
+  const elEmail = $("email");
+
   if (!session) {
     setStatus("Signed out");
+    if (btnLogin) btnLogin.disabled = false;
+    if (btnLogout) btnLogout.disabled = true;
+    if (elEmail) elEmail.disabled = false;
     return;
   }
 
   const email = session.user?.email || "(unknown)";
   setStatus(`Signed in as: ${email}`);
+
+  if (btnLogin) btnLogin.disabled = true;
+  if (btnLogout) btnLogout.disabled = false;
+  if (elEmail) elEmail.disabled = true;
 }
 
-btnLogin.addEventListener("click", async () => {
-  try {
-    const email = (elEmail.value || "").trim().toLowerCase();
-    if (!email) {
-      setStatus("Please enter an email.");
-      return;
-    }
+function wireUiEvents() {
+  const elEmail = $("email");
+  const btnLogin = $("btnLogin");
+  const btnLogout = $("btnLogout");
 
-    const redirectTo = getRedirectTo();
+  if (btnLogin && elEmail) {
+    btnLogin.addEventListener("click", async () => {
+      try {
+        const email = (elEmail.value || "").trim().toLowerCase();
+        if (!email) {
+          setStatus("Please enter an email.");
+          return;
+        }
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: redirectTo }
+        const redirectTo = getRedirectTo();
+
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: redirectTo }
+        });
+
+        if (error) throw error;
+
+        setStatus(`Magic link sent to: ${email}\nRedirect: ${redirectTo}`);
+      } catch (e) {
+        setStatus(`Error: ${e?.message || String(e)}`);
+      }
     });
-
-    if (error) throw error;
-
-    setStatus(`Magic link sent to: ${email}\nRedirect: ${redirectTo}`);
-  } catch (e) {
-    setStatus(`Error: ${e?.message || String(e)}`);
   }
-});
 
-btnLogout.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  await refreshUi();
-});
+  if (btnLogout) {
+    btnLogout.addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      await refreshUi();
+    });
+  }
+}
 
 supabase.auth.onAuthStateChange(async () => {
   await refreshUi();
 });
 
-(async () => {
+document.addEventListener("DOMContentLoaded", async () => {
   try {
+    wireUiEvents();
     await handleAuthRedirect();
     await refreshUi();
+
+    if (window.location.pathname.endsWith("/auth/callback/")) {
+      window.location.replace("/career-closet/");
+    }
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
   }
-})();
+});
