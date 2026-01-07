@@ -1,104 +1,99 @@
-
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
 
-const REDIRECT_TO = "https://pathways-center.github.io/career-closet/";
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const $ = (id) => document.getElementById(id);
-const statusEl = $("status");
+const elEmail = document.getElementById("email");
+const btnLogin = document.getElementById("btnLogin");
+const btnLogout = document.getElementById("btnLogout");
+const elStatus = document.getElementById("status");
 
-function log(msg) {
-  statusEl.textContent = String(msg);
+function setStatus(msg) {
+  elStatus.textContent = msg;
 }
 
-async function refreshUI() {
+function getRedirectTo() {
+  // Keeps "/career-closet/" path on GitHub Pages
+  return window.location.origin + window.location.pathname;
+}
+
+function cleanUrl() {
+  const url = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, document.title, url);
+}
+
+async function handleAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+
+  // PKCE flow: magic link redirects back with ?code=...
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    cleanUrl();
+    if (error) throw error;
+    return;
+  }
+
+  // Implicit flow fallback: redirects back with #access_token=...
+  if (window.location.hash && window.location.hash.includes("access_token=")) {
+    const { error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
+    cleanUrl();
+    if (error) throw error;
+  }
+}
+
+async function refreshUi() {
   const { data } = await supabase.auth.getSession();
   const session = data.session;
 
-  $("btnLogout").style.display = session ? "inline-block" : "none";
-  log(session ? `Logged in as: ${session.user.email}` : "Not logged in");
-}
-
-async function exchangeIfNeeded() {
-  const url = new URL(window.location.href);
-
-  // Newer flow: ?code=...
-  const code = url.searchParams.get("code");
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) log(`exchangeCodeForSession error: ${error.message}`);
-    url.searchParams.delete("code");
-    window.history.replaceState({}, document.title, url.toString());
+  if (!session) {
+    setStatus("Signed out");
     return;
   }
 
-  // Older flow: #access_token=...
-  const hash = window.location.hash;
-  if (hash && hash.includes("access_token=")) {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) log(`getSession error: ${error.message}`);
-    if (data?.session) {
-      window.history.replaceState({}, document.title, REDIRECT_TO);
+  const email = session.user?.email || "(unknown)";
+  setStatus(`Signed in as: ${email}`);
+}
+
+btnLogin.addEventListener("click", async () => {
+  try {
+    const email = (elEmail.value || "").trim().toLowerCase();
+    if (!email) {
+      setStatus("Please enter an email.");
+      return;
     }
-  }
 
-  // If your page shows: #error=access_denied&error_code=otp_expired...
-  if (hash && hash.includes("error=")) {
-    log(`Auth callback error: ${hash.substring(1)}`);
-  }
-}
+    const redirectTo = getRedirectTo();
 
-$("btnLogin").addEventListener("click", async () => {
-  const email = $("email").value.trim();
-  if (!email) {
-    alert("Enter your email first.");
-    return;
-  }
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo }
+    });
 
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: REDIRECT_TO },
-  });
+    if (error) throw error;
 
-  if (error) {
-    log(`signInWithOtp error: ${error.message}`);
-  } else {
-    log("Magic link sent. Check your inbox.");
+    setStatus(`Magic link sent to: ${email}\nRedirect: ${redirectTo}`);
+  } catch (e) {
+    setStatus(`Error: ${e?.message || String(e)}`);
   }
 });
 
-$("btnSendLink").addEventListener("click", async () => {
-  const email = $("email").value.trim();
-  if (!email) {
-    alert("Enter your email first.");
-    return;
-  }
-
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: REDIRECT_TO },
-  });
-
-  if (error) {
-    log(`signInWithOtp error: ${error.message}`);
-  } else {
-    log("Magic link sent. Check your inbox.");
-  }
+btnLogout.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  await refreshUi();
 });
-
-$("btnLogout").addEventListener("click", async () => {
-  const { error } = await supabase.auth.signOut();
-  if (error) log(`signOut error: ${error.message}`);
-  await refreshUI();
-});
-
-await exchangeIfNeeded();
-await refreshUI();
 
 supabase.auth.onAuthStateChange(async () => {
-  await refreshUI();
+  await refreshUi();
 });
+
+(async () => {
+  try {
+    await handleAuthRedirect();
+    await refreshUi();
+  } catch (e) {
+    setStatus(`Error: ${e?.message || String(e)}`);
+  }
+})();
