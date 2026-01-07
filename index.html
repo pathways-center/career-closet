@@ -4,21 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Emory Career Closet</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; }
+      .row { margin: 12px 0; }
+      input { padding: 10px; width: 340px; max-width: 100%; }
+      button { padding: 10px 14px; cursor: pointer; }
+      #status { margin-top: 14px; white-space: pre-wrap; }
+    </style>
   </head>
-
   <body>
     <h1>Emory Career Closet</h1>
     <p>Public inventory & reservation system</p>
 
-    <button id="btnLogin">Login with Emory Email</button>
-    <button id="btnLogout" style="display:none;">Logout</button>
-
-    <div style="margin-top: 16px;">
-      <input id="email" type="email" placeholder="name@emory.edu" style="width: 320px;" />
-      <button id="btnSendLink">Send magic link</button>
+    <div class="row">
+      <input id="email" type="email" placeholder="name@emory.edu" />
+    </div>
+    <div class="row">
+      <button id="btnLogin">Send magic link</button>
+      <button id="btnLogout">Logout</button>
     </div>
 
-    <pre id="status" style="margin-top: 16px; white-space: pre-wrap;"></pre>
+    <div id="status"></div>
 
     <script type="module" src="./auth.js"></script>
   </body>
