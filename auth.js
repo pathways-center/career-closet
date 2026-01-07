@@ -1,26 +1,22 @@
-// DO NOT redeclare this anywhere else
-const supabaseClient = supabase.createClient(
-  'https://qvyhnnvyyjjnzkmecoga.supabase.co',
-  'sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP'
-)
+// ===== Supabase config =====
+const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_xxxxxxxxxxxxx";
 
-const loginBtn = document.getElementById('login-btn')
+// Create client ONCE
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
 
-loginBtn.addEventListener('click', async () => {
-  const email = prompt('Enter your Emory email')
-
-  if (!email) return
-
+// ===== Login logic =====
+document.getElementById("loginBtn").addEventListener("click", async () => {
   const { error } = await supabaseClient.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: 'https://pathways-center.github.io/career-closet/'
-    }
-  })
+    email: prompt("Enter your Emory email"),
+  });
 
   if (error) {
-    alert(error.message)
+    alert(error.message);
   } else {
-    alert('Check your email for the login link')
+    alert("Check your email for the login link.");
   }
-})
+});
