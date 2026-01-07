@@ -64,32 +64,36 @@ async function handleMagicLinkHash() {
 }
 
 async function refreshUi() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) console.warn("[getSession error]", error);
-
-  const session = data?.session;
-
-  const elEmail = $("email");
+  const { data } = await supabase.auth.getSession();
+  const session = data.session;
   const btnLogin = $("btnLogin");
   const btnLogout = $("btnLogout");
-
+  const elEmail = $("email");
   if (!session) {
     setStatus("Signed out");
-
+    setGate(false); 
     if (btnLogin) btnLogin.disabled = false;
     if (btnLogout) btnLogout.disabled = true;
     if (elEmail) elEmail.disabled = false;
-
     return;
   }
-
   const email = session.user?.email || "(unknown)";
   setStatus(`Signed in as: ${email}`);
-
+  setGate(true); 
   if (btnLogin) btnLogin.disabled = true;
   if (btnLogout) btnLogout.disabled = false;
   if (elEmail) elEmail.disabled = true;
 }
+
+
+function setGate(isAuthed) {
+  const publicView = document.getElementById("publicView");
+  const appView = document.getElementById("appView");
+
+  if (publicView) publicView.style.display = isAuthed ? "none" : "block";
+  if (appView) appView.style.display = isAuthed ? "block" : "none";
+}
+
 
 function getEmailRedirectTo() {
   // Always send email back to callback page
