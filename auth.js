@@ -58,7 +58,6 @@ async function handleAuthRedirect() {
     cleanUrl();
     if (error) throw error;
   }
-}
 
 
 async function refreshUi() {
