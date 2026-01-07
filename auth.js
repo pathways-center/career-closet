@@ -32,15 +32,19 @@ function cleanUrl() {
 }
 
 async function handleAuthRedirect() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
+  console.log("[auth] search=", location.search, "hash=", location.hash);
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    cleanUrl();
-    if (error) throw error;
-    return;
-  }
+  const code = new URLSearchParams(location.search).get("code");
+  if (!code) return;
+
+  console.log("[auth] exchanging code for session...");
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  console.log("[auth] exchange result:", { hasSession: !!data?.session, error });
+
+  cleanUrl();
+  if (error) throw error;
+}
+
 
   const hash = new URLSearchParams(window.location.hash.slice(1));
   const access_token = hash.get("access_token");
