@@ -31,36 +31,15 @@ function cleanUrl() {
   window.history.replaceState({}, document.title, url);
 }
 
-
 async function handleAuthRedirect() {
-  // 1) PKCE flow: magic link redirects back with ?code=...
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
+  if (!code) return;
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    cleanUrl(); // remove ?code=...
-    if (error) throw error;
-    return; // code flow handled
-  }
-
-  // 2) Implicit flow fallback: redirects back with #access_token=...&refresh_token=...
-  const hashStr = window.location.hash || "";
-  if (hashStr.includes("access_token=")) {
-    const hash = new URLSearchParams(hashStr.replace(/^#/, "")); // strip leading '#'
-
-    const access_token = hash.get("access_token");
-    const refresh_token = hash.get("refresh_token");
-
-    if (!access_token) throw new Error("Missing access_token in URL hash.");
-    if (!refresh_token) throw new Error("Missing refresh_token in URL hash.");
-
-    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-    cleanUrl(); // remove #access_token=...
-    if (error) throw error;
-  }
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  cleanUrl(); // remove ?code=...
+  if (error) throw error;
 }
-
 
 async function refreshUi() {
   const { data } = await supabase.auth.getSession();
