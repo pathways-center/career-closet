@@ -1,35 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Career Closet</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 24px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #666; }
+    .cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+    .card img { width: 100%; height: 180px; object-fit: cover; border-radius: 8px; background: #f4f4f4; }
+    .pill { display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius: 999px; font-size: 12px; margin-right: 6px; }
+    dialog { width: min(560px, 95vw); border: 1px solid #ddd; border-radius: 12px; padding: 14px; }
+    dialog::backdrop { background: rgba(0,0,0,.25); }
+    input, select, button { padding: 8px; }
+    button { cursor: pointer; }
+  </style>
+</head>
 <body>
-  <h2>Career Closet</h2>
+  <h1>Career Closet</h1>
 
-  <div class="row">
-    <input id="email" type="email" placeholder="you@emory.edu" autocomplete="email" />
-    <button id="btnLogin">Send magic link</button>
-    <button id="btnLogout" disabled>Logout</button>
-  </div>
-  <pre id="status">Loading...</pre>
-
-  <section id="publicView" style="display:none; margin-top:16px;">
-    <h3>Welcome</h3>
-    <p>Please sign in with your Emory email to access the inventory and request form.</p>
+  <section id="authPanel" style="display:none;">
+    <p class="muted">Please sign in with your Emory email to browse and request items.</p>
+    <div class="row">
+      <input id="email" type="email" placeholder="you@emory.edu" autocomplete="email" />
+      <button id="btnLogin">Send magic link</button>
+    </div>
+    <pre id="status">Signed out</pre>
   </section>
 
-  <section id="appView" style="display:none; margin-top:16px;">
-    <h3>Inventory</h3>
-    <div id="inventoryList">Loading inventory...</div>
+  <section id="appShell" style="display:none;">
+    <div class="row" style="justify-content: space-between;">
+      <div>
+        <div id="hello" style="font-weight:600;"></div>
+        <div class="muted" id="subStatus"></div>
+      </div>
+      <button id="btnLogout">Logout</button>
+    </div>
 
-    <hr />
+    <hr style="margin: 16px 0;" />
 
-    <h3>Request</h3>
-    <form id="requestForm">
-      <label>
-        Item ID:
-        <input id="reqItemId" required />
-      </label>
-      <button type="submit">Submit request</button>
+    <div class="row">
+      <input id="q" placeholder="Search InventoryID / Brand / Color / Size" style="min-width: 280px;" />
+      <select id="fGender">
+        <option value="">All Gender</option>
+        <option value="Men">Men</option>
+        <option value="Women">Women</option>
+      </select>
+
+      <select id="fStatus">
+        <option value="available">Available only</option>
+        <option value="">All status</option>
+      </select>
+
+      <button id="btnSearch">Search</button>
+      <button id="btnReset" type="button">Reset</button>
+    </div>
+
+    <div class="muted" style="margin-top:10px;">
+      Tip: click an item to request a time slot.
+    </div>
+
+    <div id="inventoryList" class="cardGrid"></div>
+
+    <div class="row" style="margin-top:12px;">
+      <button id="btnPrev" type="button">Prev</button>
+      <div class="muted" id="pageInfo"></div>
+      <button id="btnNext" type="button">Next</button>
+    </div>
+  </section>
+
+  <dialog id="dlgRequest">
+    <form method="dialog" id="requestForm">
+      <h3>Request Item</h3>
+      <div class="muted" id="reqItemMeta"></div>
+
+      <div style="margin-top:10px;" class="row">
+        <label>
+          Date:
+          <input id="reqDate" type="date" required />
+        </label>
+        <label>
+          Start:
+          <input id="reqStart" type="time" required />
+        </label>
+        <label>
+          End:
+          <input id="reqEnd" type="time" required />
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:14px; justify-content:flex-end;">
+        <button value="cancel" type="button" id="btnCancelDlg">Cancel</button>
+        <button value="ok" type="submit" id="btnSubmitReq">Submit request</button>
+      </div>
+
+      <pre id="reqStatus" style="white-space:pre-wrap;"></pre>
     </form>
+  </dialog>
 
-    <pre id="requestStatus"></pre>
-  </section>
+  <script type="module" src="./auth/auth.js?v=student_ui_1"></script>
 
-  <script type="module" src="./auth/auth.js?v=20260107_implicit_final_1"></script>
+  <script type="module" src="./app.js?v=student_app_1"></script>
 </body>
+</html>
