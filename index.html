@@ -6,12 +6,14 @@
 </head>
 <body>
   <h1>Emory Career Closet</h1>
-  <button id="login-btn">Login with Emory Email</button>
+  <p>Public inventory & reservation system</p>
 
-  <!-- Supabase SDK -->
-  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <button id="loginBtn">Login with Emory Email</button>
 
-  <!-- Your app code -->
+  <!-- Supabase CDN (must be BEFORE auth.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Your auth logic -->
   <script src="./auth.js"></script>
 </body>
 </html>
