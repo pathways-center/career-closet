@@ -3,18 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <title>Emory Career Closet</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Supabase JS -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 40px;
+    }
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 16px;
+      margin-top: 20px;
+    }
+  </style>
 </head>
 <body>
+
   <h1>Emory Career Closet</h1>
   <p>Public inventory & reservation system</p>
 
-  <button onclick="login()">Login with Emory Email</button>
+  <button id="loginBtn">Login with Emory Email</button>
+  <button id="logoutBtn" style="display:none;">Logout</button>
+
+  <pre id="output"></pre>
 
   <script>
-    function login() {
-      alert("Supabase Auth will be connected here.");
+    // ===============================
+    // CONFIGURATION
+    // ===============================
+    const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_xxxxxxxxxxxxxxxxx";
+
+    const supabase = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
+
+    const output = document.getElementById("output");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    // ===============================
+    // LOGIN
+    // ===============================
+    loginBtn.onclick = async () => {
+      const email = prompt("Enter your Emory email address");
+
+      if (!email) return;
+
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: {
+          emailRedirectTo: window.location.origin + window.location.pathname
+        }
+      });
+
+      if (error) {
+        alert(error.message);
+      } else {
+        alert("Check your email for the login link");
+      }
+    };
+
+    // ===============================
+    // LOGOUT
+    // ===============================
+    logoutBtn.onclick = async () => {
+      await supabase.auth.signOut();
+      updateUI();
+    };
+
+    // ===============================
+    // AUTH STATE
+    // ===============================
+    async function updateUI() {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "inline-block";
+        output.textContent = JSON.stringify(session.user, null, 2);
+      } else {
+        loginBtn.style.display = "inline-block";
+        logoutBtn.style.display = "none";
+        output.textContent = "Not logged in";
+      }
     }
+
+    supabase.auth.onAuthStateChange(() => {
+      updateUI();
+    });
+
+    updateUI();
   </script>
+
 </body>
 </html>
