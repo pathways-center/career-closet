@@ -1,28 +1,35 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Career Closet</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-    .row { margin: 12px 0; }
-    input { padding: 10px; width: 360px; max-width: 100%; }
-    button { padding: 10px 14px; margin-left: 8px; }
-    pre { background: #f6f6f6; padding: 12px; white-space: pre-wrap; }
-  </style>
-</head>
 <body>
   <h2>Career Closet</h2>
 
   <div class="row">
-    <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+    <input id="email" type="email" placeholder="you@emory.edu" autocomplete="email" />
     <button id="btnLogin">Send magic link</button>
     <button id="btnLogout" disabled>Logout</button>
   </div>
-
   <pre id="status">Loading...</pre>
+
+  <section id="publicView" style="display:none; margin-top:16px;">
+    <h3>Welcome</h3>
+    <p>Please sign in with your Emory email to access the inventory and request form.</p>
+  </section>
+
+  <section id="appView" style="display:none; margin-top:16px;">
+    <h3>Inventory</h3>
+    <div id="inventoryList">Loading inventory...</div>
+
+    <hr />
+
+    <h3>Request</h3>
+    <form id="requestForm">
+      <label>
+        Item ID:
+        <input id="reqItemId" required />
+      </label>
+      <button type="submit">Submit request</button>
+    </form>
+
+    <pre id="requestStatus"></pre>
+  </section>
 
   <script type="module" src="./auth/auth.js?v=20260107_implicit_final_1"></script>
 </body>
-</html>
