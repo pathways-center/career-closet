@@ -6,7 +6,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    flowType: "pkce",
     persistSession: true,
     autoRefreshToken: true,
   },
@@ -17,82 +16,53 @@ function $(id) {
 }
 
 function setStatus(msg) {
-  const elStatus = $("status");
-  if (elStatus) elStatus.textContent = msg;
+  const el = $("status");
+  if (el) el.textContent = msg;
   console.log("[status]", msg);
-}
-
-function getRedirectTo() {
-  // GitHub Pages project site: keep /career-closet/ prefix
-  return `${window.location.origin}/career-closet/auth/callback/`;
-}
-
-function cleanUrl() {
-  // remove query/hash after we consumed it
-  const url = window.location.origin + window.location.pathname;
-  window.history.replaceState({}, document.title, url);
-}
-
-async function handleAuthRedirect() {
-  console.log("[auth] search=", location.search, "hash=", location.hash);
-
-  // A) PKCE code flow: /callback/?code=...
-  const code = new URLSearchParams(location.search).get("code");
-  if (code) {
-    setStatus("Signing you in (code)...");
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    console.log("[auth] exchangeCodeForSession:", { hasSession: !!data?.session, error });
-    cleanUrl();
-    if (error) throw error;
-    return;
-  }
-
-  // B) Implicit hash flow fallback: /callback/#access_token=...&refresh_token=...
-  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
-  const access_token = hash.get("access_token");
-  const refresh_token = hash.get("refresh_token");
-
-  if (access_token && refresh_token) {
-    setStatus("Signing you in (token)...");
-    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-    console.log("[auth] setSession:", { error });
-    cleanUrl();
-    if (error) throw error;
-  }
 }
 
 async function refreshUi() {
   const { data, error } = await supabase.auth.getSession();
-  if (error) console.warn("[auth] getSession error:", error);
+  if (error) console.warn("[getSession error]", error);
 
   const session = data?.session;
 
-  const btnLogin = $("btnLogin");
+  const btnSendCode = $("btnSendCode");
+  const btnVerify = $("btnVerify");
   const btnLogout = $("btnLogout");
   const elEmail = $("email");
+  const elOtp = $("otp");
 
   if (!session) {
     setStatus("Signed out");
-    if (btnLogin) btnLogin.disabled = false;
+    if (btnSendCode) btnSendCode.disabled = false;
+    if (btnVerify) btnVerify.disabled = false;
     if (btnLogout) btnLogout.disabled = true;
     if (elEmail) elEmail.disabled = false;
+    if (elOtp) elOtp.disabled = false;
     return;
   }
 
   const email = session.user?.email || "(unknown)";
   setStatus(`Signed in as: ${email}`);
-  if (btnLogin) btnLogin.disabled = true;
+
+  if (btnSendCode) btnSendCode.disabled = true;
+  if (btnVerify) btnVerify.disabled = true;
   if (btnLogout) btnLogout.disabled = false;
   if (elEmail) elEmail.disabled = true;
+  if (elOtp) elOtp.disabled = true;
 }
 
 function wireUiEvents() {
   const elEmail = $("email");
-  const btnLogin = $("btnLogin");
+  const elOtp = $("otp");
+
+  const btnSendCode = $("btnSendCode");
+  const btnVerify = $("btnVerify");
   const btnLogout = $("btnLogout");
 
-  if (btnLogin && elEmail) {
-    btnLogin.addEventListener("click", async () => {
+  if (btnSendCode && elEmail) {
+    btnSendCode.addEventListener("click", async () => {
       try {
         const email = (elEmail.value || "").trim().toLowerCase();
         if (!email) {
@@ -100,16 +70,56 @@ function wireUiEvents() {
           return;
         }
 
-        const redirectTo = getRedirectTo();
-        setStatus("Sending magic link...");
+        setStatus("Sending verification code...");
 
+        // 发送 6 位验证码（Email OTP）
         const { error } = await supabase.auth.signInWithOtp({
           email,
-          options: { emailRedirectTo: redirectTo },
+          options: {
+            // 关键：不要用 magic link 回跳；我们用 code 手动验证
+            shouldCreateUser: true,
+          },
         });
 
         if (error) throw error;
-        setStatus(`Magic link sent to: ${email}\nRedirect: ${redirectTo}`);
+
+        setStatus(`Code sent to: ${email}\nCheck your inbox (and spam).`);
+        if (elOtp) elOtp.focus();
+      } catch (e) {
+        console.error(e);
+        setStatus(`Error: ${e?.message || String(e)}`);
+      }
+    });
+  }
+
+  if (btnVerify && elEmail && elOtp) {
+    btnVerify.addEventListener("click", async () => {
+      try {
+        const email = (elEmail.value || "").trim().toLowerCase();
+        const token = (elOtp.value || "").trim().replace(/\s+/g, "");
+
+        if (!email) {
+          setStatus("Please enter an email.");
+          return;
+        }
+        if (!token) {
+          setStatus("Please enter the 6-digit code from your email.");
+          return;
+        }
+
+        setStatus("Verifying code...");
+
+        // 验证码登录（落地 session）
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "email",
+        });
+
+        if (error) throw error;
+
+        setStatus(`Signed in as: ${data?.user?.email || email}`);
+        await refreshUi();
       } catch (e) {
         console.error(e);
         setStatus(`Error: ${e?.message || String(e)}`);
@@ -138,17 +148,7 @@ supabase.auth.onAuthStateChange(async (event) => {
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     wireUiEvents();
-
-    await handleAuthRedirect();
-
-    // Confirm session is present before redirecting away from callback page
-    const { data } = await supabase.auth.getSession();
     await refreshUi();
-
-    if (location.pathname.includes("/auth/callback") && data?.session) {
-      // Always go back to app home after successful callback
-      location.replace("/career-closet/");
-    }
   } catch (e) {
     console.error(e);
     setStatus(`Error: ${e?.message || String(e)}`);
