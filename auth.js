@@ -14,8 +14,7 @@ function setStatus(msg) {
 }
 
 function getRedirectTo() {
-  const basePath = "/career-closet";
-  return `${window.location.origin}${basePath}/auth/callback/`;
+  return `${window.location.origin}/career-closet/auth/callback/`;
 }
 
 function cleanUrl() {
