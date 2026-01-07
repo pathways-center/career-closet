@@ -72,11 +72,9 @@ function wireUiEvents() {
 
         setStatus("Sending verification code...");
 
-        // 发送 6 位验证码（Email OTP）
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            // 关键：不要用 magic link 回跳；我们用 code 手动验证
             shouldCreateUser: true,
           },
         });
@@ -109,7 +107,6 @@ function wireUiEvents() {
 
         setStatus("Verifying code...");
 
-        // 验证码登录（落地 session）
         const { data, error } = await supabase.auth.verifyOtp({
           email,
           token,
