@@ -1,19 +1,25 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Emory Career Closet</title>
-</head>
-<body>
-  <h1>Emory Career Closet</h1>
-  <p>Public inventory & reservation system</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Emory Career Closet</title>
+  </head>
 
-  <button id="loginBtn">Login with Emory Email</button>
+  <body>
+    <h1>Emory Career Closet</h1>
+    <p>Public inventory & reservation system</p>
 
-  <!-- Supabase CDN (must be BEFORE auth.js) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <button id="btnLogin">Login with Emory Email</button>
+    <button id="btnLogout" style="display:none;">Logout</button>
 
-  <!-- Your auth logic -->
-  <script src="./auth.js"></script>
-</body>
+    <div style="margin-top: 16px;">
+      <input id="email" type="email" placeholder="name@emory.edu" style="width: 320px;" />
+      <button id="btnSendLink">Send magic link</button>
+    </div>
+
+    <pre id="status" style="margin-top: 16px; white-space: pre-wrap;"></pre>
+
+    <script type="module" src="./auth.js"></script>
+  </body>
 </html>
