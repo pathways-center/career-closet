@@ -34,12 +34,28 @@ function cleanUrl() {
 async function handleAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
-  if (!code) return;
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  cleanUrl(); // remove ?code=...
-  if (error) throw error;
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    cleanUrl();
+    if (error) throw error;
+    return;
+  }
+
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  const access_token = hash.get("access_token");
+  const refresh_token = hash.get("refresh_token");
+
+  if (access_token && refresh_token) {
+    const { error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
+    cleanUrl();
+    if (error) throw error;
+  }
 }
+
 
 async function refreshUi() {
   const { data } = await supabase.auth.getSession();
