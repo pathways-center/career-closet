@@ -94,11 +94,7 @@ async function handleAuthRedirect() {
     setStatus("Signing you in...");
     setSubStatus("Setting session from hash tokens...");
 
-    const { error } = await withTimeout(
-      supabase.auth.setSession({ access_token, refresh_token }),
-      15000,
-      "setSession"
-    );
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
 
     console.log("[auth] setSession result:", { ok: !error, error });
     if (error) throw error;
