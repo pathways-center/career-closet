@@ -13,6 +13,42 @@ let CURRENT_USER_ID = null;
 let CART = [];
 let LAST_INVENTORY = []; // keep latest inventory in memory
 
+// ===== Idle auto-logout (15 minutes) =====
+const IDLE_MS = 15 * 60 * 1000;
+let __lastActiveAt = Date.now();
+let __idleTimer = null;
+
+function startIdleLogout() {
+  const bump = () => { __lastActiveAt = Date.now(); };
+  ["pointerdown","mousedown","mousemove","keydown","scroll","touchstart"].forEach((evt) => {
+    window.addEventListener(evt, bump, { capture: true, passive: true });
+  });
+
+  if (__idleTimer) clearInterval(__idleTimer);
+  __idleTimer = setInterval(async () => {
+    const session = getStoredSession();
+    if (!session) return;
+
+    if (Date.now() - __lastActiveAt < IDLE_MS) return;
+
+    __lastActiveAt = Date.now() + 10 * IDLE_MS;
+
+    // toast("Signed out due to inactivity.", "info");
+    setStatus("Signed out");
+    setSubStatus("You were signed out due to inactivity.");
+
+    clearStoredSession();
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch (e) {
+      console.warn("[idle signOut]", e?.message || e);
+    }
+
+    await refreshUi();
+  }, 15 * 1000);
+}
+
+
 function safePageId() {
   const hasToken = (window.location.hash || "").includes("access_token=");
   return `${window.location.origin}${window.location.pathname}${hasToken ? " (hash_has_token)" : ""}`;
@@ -748,6 +784,11 @@ async function handleCallbackPage() {
   window.location.replace(BASE_URL);
 }
 
+// ===== Logout on close (local only) =====
+window.addEventListener("pagehide", () => {
+  clearStoredSession();
+});
+
 /* ===================== BOOT ===================== */
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -761,14 +802,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     wireCartUiEvents();
     wireInventoryFilters();
 
-
-    await refreshUi();
+    await refreshUi();     // 先把 UI 刷到正确状态
+    startIdleLogout();     // 再启动 15 分钟无操作自动登出
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
     setSubStatus("");
     console.error(e);
   }
 });
+
 // ===== Force-bind cart buttons (fallback) =====
 function wireReserveCartFallback() {
   const btn = document.getElementById("btnReserveCart");
