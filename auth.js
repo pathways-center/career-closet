@@ -110,21 +110,26 @@ function getRedirectTo() { return `${BASE_URL}auth/callback/`; }
 
 function getStoredSession() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
     if (!s || !s.access_token) return null;
     return s;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
+
 function clearStoredSession() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {}
 }
 
 function storeSessionFromHash() {
   const hashParams = new URLSearchParams((location.hash || "").replace(/^#/, ""));
   const access_token = hashParams.get("access_token");
-  const _token = hashParams.get("_token");
+  const refresh_token = hashParams.get("refresh_token");
   const token_type = hashParams.get("token_type") || "bearer";
   const expires_in = Number(hashParams.get("expires_in") || "3600");
   const expires_at_from_hash = Number(hashParams.get("expires_at") || "0");
@@ -137,20 +142,24 @@ function storeSessionFromHash() {
 
   const session = {
     access_token,
-    _token: _token || "",
+    refresh_token: refresh_token || "",
     token_type,
     expires_in,
     expires_at,
     provider_token: null,
-    provider__token: null,
+    provider_refresh_token: null,
     user: null,
   };
 
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); }
-  catch (e) { return { ok: false, error: `Failed to write session to localStorage: ${e?.message || String(e)}` }; }
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch (e) {
+    return { ok: false, error: `Failed to write session to sessionStorage: ${e?.message || String(e)}` };
+  }
 
   return { ok: true };
 }
+
 
 function buildPublicImageUrl(image_path) {
   if (!image_path) return "";
@@ -783,11 +792,6 @@ async function handleCallbackPage() {
   setSubStatus("Redirecting...");
   window.location.replace(BASE_URL);
 }
-
-// ===== Logout on close (local only) =====
-window.addEventListener("pagehide", () => {
-  clearStoredSession();
-});
 
 /* ===================== BOOT ===================== */
 
