@@ -17,7 +17,7 @@
     .brand { font-weight:800; font-size:28px; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
-    .item-card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; cursor:pointer; }
+    .item-card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
     .item-card:hover { border-color:#bbb; }
 
     .imgbox { width:100%; aspect-ratio: 4/5; background:#f6f6f6; border-radius: 10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
@@ -39,6 +39,9 @@
     #signedOutHint { display:block; }
     #signedInArea { display:none; }
     #requestSection { display:block; }
+
+    .cartline { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid #eee; }
+    .btn-sm { padding: 6px 10px; font-size: 12px; }
   </style>
 </head>
 
@@ -50,8 +53,6 @@
       <div class="brand">Career Closet</div>
       <div class="muted" style="margin-top:6px; line-height:1.5;">
         Browse professional clothing and submit a request after signing in with your Emory email.
-        <br>
-        This service is intended for currently enrolled Emory undergraduate students only.
       </div>
 
       <div class="divider"></div>
@@ -81,6 +82,7 @@
             </div>
           </div>
           <div class="row">
+            <button id="btnOpenCart" type="button">Reserve cart (<span id="cartCount">0</span>)</button>
             <button id="btnLogout" type="button">Logout</button>
           </div>
         </div>
@@ -90,7 +92,7 @@
         <div class="row" style="align-items:end;">
           <div>
             <h2 style="margin:0;">Inventory</h2>
-            <div class="muted">Click an item to auto-fill the request form.</div>
+            <div class="muted">Add items to cart (max 5), then reserve.</div>
           </div>
           <div class="right">
             <div style="font-size:12px; color:#666;">Search</div>
@@ -102,20 +104,21 @@
       </div>
 
       <section id="requestSection" class="card" style="margin-top:14px;">
-        <h2 style="margin:0 0 6px;">Request</h2>
-        <div class="muted">
-          Pick an item + pickup date (Atlanta time). Pickup time is optional (15-min increments).
-          <br>
-          If you need same-day help, please visit the Career Closet in person.
+        <h2 style="margin:0 0 6px;">Reserve cart</h2>
+        <div class="muted">Select up to 5 items, then pick a pickup date/time (Atlanta time).</div>
+
+        <!-- Cart list -->
+        <div style="margin-top:10px;">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div style="font-weight:800;">Cart items</div>
+            <div class="right"></div>
+            <button id="btnClearCart" type="button" class="btn-sm">Clear</button>
+          </div>
+          <div id="cartList" style="margin-top:6px;"></div>
         </div>
 
-        <!-- Row 1: item + date + time (optional) -->
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
-          <div>
-            <div style="font-size:12px; color:#666;">Item ID</div>
-            <input id="reqItemId" placeholder="e.g. MBzBe1" style="width:160px;">
-          </div>
-
+        <!-- Form -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:12px;">
           <div>
             <div style="font-size:12px; color:#666;">Pickup Date</div>
             <input id="reqDate" type="date">
@@ -126,35 +129,28 @@
             <input id="reqStart" type="time" step="900">
           </div>
 
-          <div>
-            <button id="btnSubmitRequest" type="button">Preview request</button>
-          </div>
-
-          <div>
-            <button id="btnReserve" type="button">Reserve</button>
-          </div>
-        </div>
-
-        <!-- Row 2: student info -->
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
-          <div>
+          <div style="min-width:260px; flex:1;">
             <div style="font-size:12px; color:#666;">Full name</div>
-            <input id="reqFullName" type="text" placeholder="Full name" style="min-width:220px;">
+            <input id="reqFullName" type="text" placeholder="Full name" style="width:100%;">
           </div>
 
-          <div>
-            <div style="font-size:12px; color:#666;">Email</div>
-            <input id="reqEmail" type="email" readonly style="min-width:260px;">
+          <div style="min-width:260px; flex:1;">
+            <div style="font-size:12px; color:#666;">Email (read-only)</div>
+            <input id="reqEmail" type="email" readonly style="width:100%;">
           </div>
 
-          <div>
+          <div style="min-width:160px;">
             <div style="font-size:12px; color:#666;">Emory ID</div>
-            <input id="reqEmoryId" type="text" placeholder="Emory ID" style="min-width:160px;">
+            <input id="reqEmoryId" type="text" placeholder="Emory ID" style="width:160px;">
+          </div>
+
+          <div style="min-width:200px;">
+            <div style="font-size:12px; color:#666;">Phone (optional)</div>
+            <input id="reqPhone" type="tel" placeholder="Phone (optional)" style="width:200px;">
           </div>
 
           <div>
-            <div style="font-size:12px; color:#666;">Phone (optional)</div>
-            <input id="reqPhone" type="tel" placeholder="Phone (optional)" style="min-width:180px;">
+            <button id="btnReserveCart" type="button">Reserve cart</button>
           </div>
         </div>
 
