@@ -38,7 +38,7 @@
 
     #signedOutHint { display:block; }
     #signedInArea { display:none; }
-    #requestSection { display:block; } /* requestSection 在 signedInArea 内部，最终由 JS 控制整体 */
+    #requestSection { display:block; }
   </style>
 </head>
 
@@ -50,6 +50,8 @@
       <div class="brand">Career Closet</div>
       <div class="muted" style="margin-top:6px; line-height:1.5;">
         Browse professional clothing and submit a request after signing in with your Emory email.
+        <br>
+        This service is intended for currently enrolled Emory undergraduate students only.
       </div>
 
       <div class="divider"></div>
@@ -101,8 +103,13 @@
 
       <section id="requestSection" class="card" style="margin-top:14px;">
         <h2 style="margin:0 0 6px;">Request</h2>
-        <div class="muted">Pick an item + date & time (Atlanta time).</div>
+        <div class="muted">
+          Pick an item + pickup date (Atlanta time). Pickup time is optional (15-min increments).
+          <br>
+          If you need same-day help, please visit the Career Closet in person.
+        </div>
 
+        <!-- Row 1: item + date + time (optional) -->
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
           <div>
             <div style="font-size:12px; color:#666;">Item ID</div>
@@ -110,22 +117,44 @@
           </div>
 
           <div>
-            <div style="font-size:12px; color:#666;">Date</div>
+            <div style="font-size:12px; color:#666;">Pickup Date</div>
             <input id="reqDate" type="date">
           </div>
 
           <div>
-            <div style="font-size:12px; color:#666;">Start</div>
+            <div style="font-size:12px; color:#666;">Pickup Time (optional)</div>
             <input id="reqStart" type="time" step="900">
           </div>
 
           <div>
-            <div style="font-size:12px; color:#666;">End</div>
-            <input id="reqEnd" type="time" step="900">
+            <button id="btnSubmitRequest" type="button">Preview request</button>
           </div>
 
           <div>
-            <button id="btnSubmitRequest" type="button">Preview request</button>
+            <button id="btnReserve" type="button">Reserve</button>
+          </div>
+        </div>
+
+        <!-- Row 2: student info -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
+          <div>
+            <div style="font-size:12px; color:#666;">Full name</div>
+            <input id="reqFullName" type="text" placeholder="Full name" style="min-width:220px;">
+          </div>
+
+          <div>
+            <div style="font-size:12px; color:#666;">Email</div>
+            <input id="reqEmail" type="email" readonly style="min-width:260px;">
+          </div>
+
+          <div>
+            <div style="font-size:12px; color:#666;">Emory ID</div>
+            <input id="reqEmoryId" type="text" placeholder="Emory ID" style="min-width:160px;">
+          </div>
+
+          <div>
+            <div style="font-size:12px; color:#666;">Phone (optional)</div>
+            <input id="reqPhone" type="tel" placeholder="Phone (optional)" style="min-width:180px;">
           </div>
         </div>
 
