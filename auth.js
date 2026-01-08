@@ -209,37 +209,62 @@ function clearCart() {
   renderCart();
   updateCartBadge();
 }
-function renderCart() {
-  const list = $("cartList");
-  if (!list) return;
 
-  if (!CART.length) {
-    list.innerHTML = `<div class="muted">Cart is empty.</div>`;
+function renderCart() {
+  const el = $("cartList");
+  if (!el) return;
+
+  if (!Array.isArray(CART) || CART.length === 0) {
+    el.innerHTML = `<div class="muted">Cart is empty.</div>`;
     return;
   }
 
-  // Optional: show some item details if we have LAST_INVENTORY
-  const byId = new Map(LAST_INVENTORY.map(x => [x.inventory_id, x]));
+  const map = new Map((LAST_INVENTORY || []).map(r => [String(r.inventory_id || ""), r]));
 
-  list.innerHTML = CART.map((id) => {
-    const row = byId.get(id);
-    const sub = row ? `${esc(row.brand || "-")} · ${esc(row.size || "-")} · ${esc(row.color || "-")}` : "";
+  el.innerHTML = CART.map((id) => {
+    const row = map.get(String(id)) || null;
+
+    const imgUrl = row?.image_path ? buildPublicImageUrl(row.image_path) : "";
+    const title = esc(id);
+
+    const sub = row
+      ? `${esc(row.brand || "Unknown")} · ${esc(row.size || "Unknown")} · ${esc(row.color || "Unknown")}`
+      : `Unknown item`;
+
+    const thumb = imgUrl
+      ? `<img class="cart-thumb" src="${imgUrl}" alt="${title}" loading="lazy">`
+      : `<div class="cart-thumbbox">No<br>image</div>`;
+
     return `
       <div class="cartline">
-        <div>
-          <div style="font-weight:800;">${esc(id)}</div>
-          ${sub ? `<div class="muted" style="font-size:12px; margin-top:2px;">${sub}</div>` : ""}
+        ${thumb}
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:800;">${title}</div>
+          <div class="muted" style="margin-top:2px;">${sub}</div>
         </div>
-        <div class="right"></div>
-        <button type="button" class="btn-sm" data-remove="${esc(id)}">Remove</button>
+        <button type="button" class="btn-sm" data-remove="${title}">Remove</button>
       </div>
     `;
   }).join("");
 
-  list.querySelectorAll("button[data-remove]").forEach(btn => {
-    btn.addEventListener("click", () => removeFromCart(btn.getAttribute("data-remove")));
+  el.querySelectorAll("button[data-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-remove");
+      removeFromCart(id);
+    });
+  });
+
+  // image fallback
+  el.querySelectorAll("img.cart-thumb").forEach((img) => {
+    img.addEventListener("error", () => {
+      img.replaceWith(Object.assign(document.createElement("div"), {
+        className: "cart-thumbbox",
+        innerHTML: "No<br>image"
+      }));
+    }, { once: true });
   });
 }
+
 
 /* ===================== INVENTORY ===================== */
 
@@ -259,13 +284,73 @@ async function loadInventoryViaRest(accessToken) {
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const data = await fetchJson(url, { headers, timeoutMs: 12000 });
-  LAST_INVENTORY = Array.isArray(data) ? data : [];
-
-  renderInventory(LAST_INVENTORY);
-  renderCart();          // keep cart view in sync with latest item info
+  const items = Array.isArray(data) ? data : [];
+  
+  LAST_INVENTORY = items;
+  
+  rebuildCategoryOptions(items);
+  applyInventoryFilters();
+  
+  renderCart();
   updateCartBadge();
-
+  
   setSubStatus("");
+  return items;
+
+}
+
+function rebuildCategoryOptions(items) {
+  const sel = $("filterCategory");
+  if (!sel) return;
+
+  const prev = sel.value || "";
+  const cats = Array.from(
+    new Set(
+      (items || [])
+        .map(r => String(r.category || "").trim())
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+  sel.innerHTML = `<option value="">All categories</option>` + cats
+    .map(c => `<option value="${esc(c)}">${esc(c)}</option>`)
+    .join("");
+
+  // restore selection if possible
+  sel.value = cats.includes(prev) ? prev : "";
+}
+
+function applyInventoryFilters() {
+  const q = (($("invSearch")?.value || "").trim().toLowerCase());
+  const cat = (($("filterCategory")?.value || "").trim());
+  const availableOnly = !!$("filterAvailableOnly")?.checked;
+
+  const filtered = (LAST_INVENTORY || []).filter((row) => {
+    const id = String(row.inventory_id || "");
+    const brand = String(row.brand || "");
+    const color = String(row.color || "");
+    const size = String(row.size || "");
+    const fit = String(row.fit || "");
+    const category = String(row.category || "");
+    const status = String(row.status || "").toLowerCase();
+
+    if (availableOnly && status !== "available") return false;
+    if (cat && category !== cat) return false;
+
+    if (q) {
+      const hay = `${id} ${brand} ${color} ${size} ${fit} ${category} ${status}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  renderInventory(filtered);
+}
+
+function wireInventoryFilters() {
+  $("invSearch")?.addEventListener("input", () => applyInventoryFilters());
+  $("filterCategory")?.addEventListener("change", () => applyInventoryFilters());
+  $("filterAvailableOnly")?.addEventListener("change", () => applyInventoryFilters());
 }
 
 function renderInventory(items) {
@@ -674,7 +759,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     wireAuthEvents();
     wireCartUiEvents();
-    wireInventorySearch();
+    wireInventoryFilters();
+
 
     await refreshUi();
   } catch (e) {
