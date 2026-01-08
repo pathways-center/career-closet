@@ -1,4 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+import { DateTime } from "https://cdn.jsdelivr.net/npm/luxon@3/build/es6/luxon.js";
 
 console.log("[auth.js] loaded on", location.href);
 
@@ -6,6 +7,7 @@ console.log("[auth.js] loaded on", location.href);
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
 const BUCKET = "career-closet"; // your public bucket
+const TZ = "America/New_York";  // Atlanta time
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -19,12 +21,22 @@ function $(id) { return document.getElementById(id); }
 
 function setStatus(msg) {
   const el = $("status");
-  if (el) el.textContent = msg;
+  if (el) el.textContent = msg || "";
 }
 
 function setSubStatus(msg) {
   const el = $("subStatus");
   if (el) el.textContent = msg || "";
+}
+
+function setReqStatus(msg) {
+  const el = $("reqStatus");
+  if (el) el.textContent = msg || "";
+}
+
+function show(el, yes) {
+  if (!el) return;
+  el.style.display = yes ? "block" : "none";
 }
 
 function cleanUrl() {
@@ -86,8 +98,9 @@ function renderInventory(items) {
     const category = esc(row.category);
     const status = esc(row.status);
 
+    // data-inventory-id 用于点击卡片自动填 request 的 item id
     return `
-      <div class="card">
+      <div class="card" data-inventory-id="${title}" style="cursor:pointer;">
         <div class="imgbox">
           ${
             imgUrl
@@ -109,6 +122,21 @@ function renderInventory(items) {
       </div>
     `;
   }).join("");
+
+  // 点击卡片 => 自动填 item id
+  el.querySelectorAll(".card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const id = card.getAttribute("data-inventory-id");
+      const input = $("reqItemId");
+      if (input && id) {
+        input.value = id;
+        setReqStatus(`Selected item: ${id}`);
+        // 滚动到 request 区域（可选）
+        const req = $("requestSection");
+        if (req) req.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  });
 }
 
 async function loadInventory() {
@@ -123,6 +151,82 @@ async function loadInventory() {
 
   renderInventory(data);
   setSubStatus("");
+}
+
+// ====== Request time helpers (Atlanta => UTC) ======
+function validateRequestInputs({ itemId, dateStr, startStr, endStr }) {
+  if (!itemId) throw new Error("Please enter Item ID (or click a card).");
+  if (!dateStr) throw new Error("Please choose a date.");
+  if (!startStr) throw new Error("Please choose a start time.");
+  if (!endStr) throw new Error("Please choose an end time.");
+
+  const startLocal = DateTime.fromISO(`${dateStr}T${startStr}`, { zone: TZ });
+  const endLocal   = DateTime.fromISO(`${dateStr}T${endStr}`,   { zone: TZ });
+
+  if (!startLocal.isValid || !endLocal.isValid) throw new Error("Invalid date/time.");
+  if (endLocal <= startLocal) throw new Error("End time must be after start time.");
+
+  const nowLocal = DateTime.now().setZone(TZ);
+  if (startLocal < nowLocal.minus({ minutes: 1 })) throw new Error("Start time cannot be in the past.");
+
+  return { startLocal, endLocal };
+}
+
+async function submitRequest() {
+  const { data: sessData } = await supabase.auth.getSession();
+  const session = sessData.session;
+  if (!session) throw new Error("Not signed in.");
+
+  const itemId = ($("reqItemId")?.value || "").trim();
+  const dateStr = $("reqDate")?.value || "";
+  const startStr = $("reqStart")?.value || "";
+  const endStr = $("reqEnd")?.value || "";
+
+  const { startLocal, endLocal } = validateRequestInputs({ itemId, dateStr, startStr, endStr });
+
+  const payload = {
+    item_inventory_id: itemId,
+    requester_email: session.user.email,
+    start_at: startLocal.toUTC().toISO(),
+    end_at: endLocal.toUTC().toISO(),
+    timezone: TZ,
+    status: "pending",
+  };
+
+  const { error } = await supabase.from("requests").insert(payload);
+  if (error) throw error;
+
+  setReqStatus(
+    `Request submitted ✅\n` +
+    `Item: ${itemId}\n` +
+    `Time (Atlanta): ${startLocal.toFormat("yyyy-LL-dd HH:mm")} - ${endLocal.toFormat("HH:mm")}\n` +
+    `Stored (UTC): ${payload.start_at} - ${payload.end_at}`
+  );
+}
+
+function wireRequestEvents() {
+  const btn = $("btnSubmitRequest");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    try {
+      btn.disabled = true;
+      setReqStatus("Submitting...");
+      await submitRequest();
+    } catch (e) {
+      setReqStatus(`Error: ${e?.message || String(e)}`);
+      console.error(e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // 初始化默认日期：今天（Atlanta）
+  const dateInput = $("reqDate");
+  if (dateInput && !dateInput.value) {
+    const today = DateTime.now().setZone(TZ).toFormat("yyyy-LL-dd");
+    dateInput.value = today;
+  }
 }
 
 // ====== UI wiring ======
@@ -173,22 +277,32 @@ async function refreshUi() {
   const btnLogout = $("btnLogout");
   const elEmail = $("email");
 
+  const requestSection = $("requestSection");
+
   if (!session) {
     setStatus("Signed out");
-    if (signedOutHint) signedOutHint.style.display = "block";
-    if (signedInArea) signedInArea.style.display = "none";
+    show(signedOutHint, true);
+    show(signedInArea, false);
+    show(requestSection, false);
 
     if (btnLogin) btnLogin.disabled = false;
     if (btnLogout) btnLogout.disabled = true;
     if (elEmail) elEmail.disabled = false;
+
+    // 未登录不显示库存（你也可以显示一个提示）
+    const inv = $("inventory");
+    if (inv) inv.innerHTML = `<div class="muted">Please sign in to view inventory.</div>`;
+    setSubStatus("");
 
     return;
   }
 
   const email = session.user?.email || "(unknown)";
   setStatus(`Signed in as: ${email}`);
-  if (signedOutHint) signedOutHint.style.display = "none";
-  if (signedInArea) signedInArea.style.display = "block";
+
+  show(signedOutHint, false);
+  show(signedInArea, true);
+  show(requestSection, true);
 
   if (btnLogin) btnLogin.disabled = true;
   if (btnLogout) btnLogout.disabled = false;
@@ -205,6 +319,7 @@ supabase.auth.onAuthStateChange(async () => {
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     wireUiEvents();
+    wireRequestEvents();
     await handleAuthRedirect();
     await refreshUi();
 
