@@ -42,9 +42,43 @@
 
     .cartline { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid #eee; }
     .btn-sm { padding: 6px 10px; font-size: 12px; }
+
+        /* ===== Toast popup (top-right) ===== */
+    .toast{
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      max-width: 380px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      color: #fff;
+      background: #111;
+      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+      opacity: 0;
+      transform: translateY(-10px);
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+      z-index: 9999;
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+    
+    .toast.show{
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    
+    .toast.info{ background:#111; }
+    .toast.success{ background:#127a33; }
+    .toast.error{ background:#b3261e; }
+
   </style>
 </head>
 
+  
 <body>
   <div class="container">
 
@@ -157,8 +191,9 @@
         <div id="reqStatus"></div>
       </section>
     </section>
-
-    <script type="module" src="./auth.js?v=cart2"></script>
+    
+    <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="./auth.js?v=cart3"></script>
 
   </div>
 </body>
