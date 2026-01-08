@@ -67,6 +67,21 @@ function clearStoredSession() {
   } catch {}
 }
 
+/** ✅ 从 access_token(JWT) 解析 email（你现在 session.user 没有，就用这个） */
+function parseJwtPayload(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return {};
+    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4;
+    if (pad) b64 += "=".repeat(4 - pad);
+    const json = atob(b64);
+    return JSON.parse(json);
+  } catch {
+    return {};
+  }
+}
+
 function storeSessionFromHash() {
   const hashParams = new URLSearchParams((location.hash || "").replace(/^#/, ""));
   const access_token = hashParams.get("access_token");
@@ -94,7 +109,7 @@ function storeSessionFromHash() {
     expires_at,
     provider_token: null,
     provider_refresh_token: null,
-    user: null,
+    user: null, // 你这里就是 null，所以别用 session.user.email
   };
 
   try {
@@ -312,13 +327,13 @@ function wireRequestEvents() {
     if (!v.fullName) { if (out) out.textContent = "Full name is required."; return; }
     if (!v.emoryId) { if (out) out.textContent = "Emory ID is required."; return; }
 
-    const { data: sessData, error: sessErr } = await supabase.auth.getSession();
-    if (sessErr || !sessData?.session?.access_token) {
+    // ✅ 用你本地存的 session，避免 supabase.auth.getSession() 不同步
+    const stored = getStoredSession();
+    const accessToken = stored?.access_token || "";
+    if (!accessToken) {
       if (out) out.textContent = "Not signed in.";
       return;
     }
-
-    const accessToken = sessData.session.access_token;
 
     if (out) out.textContent = "Submitting reservation...";
 
@@ -335,7 +350,7 @@ function wireRequestEvents() {
         emory_id: v.emoryId,
         phone: v.phone,
         pickup_date: v.date,
-        pickup_time: v.start || null, // use start as pickup time
+        pickup_time: v.start || null, // 你暂时用 start 当 pickup_time
       }),
     });
 
@@ -347,7 +362,9 @@ function wireRequestEvents() {
     }
 
     if (out) out.textContent = `Reserved OK. Reservation ID: ${json?.result?.reservation_id ?? "?"}`;
-    await loadInventory();
+
+    // ✅ 修掉你原来 await loadInventory() 的不存在函数
+    await loadInventoryViaRest(accessToken);
   }
 
   if (btnPreview) {
@@ -369,7 +386,6 @@ function wireRequestEvents() {
     });
   }
 }
-
 
 function wireAuthEvents() {
   const elEmail = $("email");
@@ -425,6 +441,7 @@ async function refreshUi() {
   const signedOutHint = $("signedOutHint");
   const signedInArea = $("signedInArea");
   const whoamiHint = $("whoamiHint");
+  const reqEmail = $("reqEmail"); // ✅ 你的 HTML 已经有了这个 readonly input
 
   if (!session) {
     setStatus("Signed out");
@@ -432,13 +449,22 @@ async function refreshUi() {
 
     if (signedOutHint) signedOutHint.style.display = "block";
     if (signedInArea) signedInArea.style.display = "none";
+
+    if (whoamiHint) whoamiHint.textContent = "Welcome!";
+    if (reqEmail) reqEmail.value = "";
     return;
   }
+
+  // ✅ 从 token 解析 email
+  const claims = parseJwtPayload(session.access_token);
+  const email = (claims.email || "").toLowerCase();
 
   setStatus("Signed in");
   setSubStatus("");
 
-  if (whoamiHint) whoamiHint.textContent = "Authenticated";
+  if (whoamiHint) whoamiHint.textContent = email ? `Welcome: ${email}` : "Authenticated";
+  if (reqEmail) reqEmail.value = email || "";
+
   if (signedOutHint) signedOutHint.style.display = "none";
   if (signedInArea) signedInArea.style.display = "block";
 
