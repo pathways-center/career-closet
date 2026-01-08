@@ -5,87 +5,155 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Career Closet</title>
   <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; background:#fff; color:#111; }
+    h1 { margin: 0 0 12px; }
+    h2 { margin: 18px 0 8px; }
+
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .muted { color: #666; }
+    .divider { height: 14px; }
+
+    .card { border: 1px solid #e5e5e5; border-radius: 14px; padding: 14px; background:#fff; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .brand { font-weight:800; font-size:28px; }
+
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+    .item-card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; cursor:pointer; }
     .imgbox { width:100%; aspect-ratio: 4/5; background:#f6f6f6; border-radius: 10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
     .imgbox img { width:100%; height:100%; object-fit:cover; display:block; }
+
     input, button { padding: 8px 10px; }
     button { cursor:pointer; }
-    pre { background: #fafafa; border:1px solid #eee; padding: 10px; border-radius: 10px; white-space: pre-wrap; }
+    button:disabled { opacity: .5; cursor:not-allowed; }
+
+    pre { background: #fafafa; border:1px solid #eee; padding: 10px; border-radius: 10px; white-space: pre-wrap; margin: 10px 0 0; }
+
+    .pill { display:inline-block; padding:6px 10px; border:1px solid #eee; border-radius:999px; background:#fafafa; font-size:12px; }
+    .right { margin-left:auto; }
+
+    /* simple layout container */
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    /* request status box */
+    #reqStatus { margin-top:10px; padding:10px; background:#f6f6f6; border-radius:8px; white-space:pre-wrap; min-height: 20px; }
+
+    /* Hide blocks by default; auth.js will toggle */
+    #signedOutHint, #signedInArea, #requestSection { display:none; }
   </style>
 </head>
 
 <body>
-  <h1>Career Closet</h1>
+  <div class="container">
+    <!-- ===== Signed OUT view ===== -->
+    <section id="signedOutHint" class="card">
+      <div class="brand">Career Closet</div>
+      <div class="muted" style="margin-top:6px; line-height:1.5;">
+        Browse professional clothing and submit a request after signing in with your Emory email.
+      </div>
 
-  <!-- Auth area (shows in both states, but we toggle controls) -->
-  <section class="card">
-    <div class="row">
-      <input id="email" type="email" placeholder="you@emory.edu" autocomplete="email" />
-      <button id="btnLogin" type="button">Send magic link</button>
-      <button id="btnLogout" type="button" disabled>Logout</button>
-    </div>
-    <div class="muted" style="margin-top:8px;">
-      After you click the magic link in your email, you’ll be signed in here.
-    </div>
-    <pre id="status">Signed out</pre>
-  </section>
+      <div class="divider"></div>
 
-  <div style="height:14px;"></div>
+      <!-- Login UI only shows when signed out -->
+      <div class="row">
+        <input id="email" type="email" placeholder="you@emory.edu" autocomplete="email" style="min-width:260px;" />
+        <button id="btnLogin" type="button">Send magic link</button>
+      </div>
 
-  <!-- Signed out hint -->
-  <section id="signedOutHint" class="card" style="display:none;">
-    <b>Please sign in</b>
-    <div class="muted" style="margin-top:6px;">
-      Sign in to browse available items.
-    </div>
-  </section>
+      <div class="muted" style="margin-top:8px;">
+        After you click the magic link in your email, you’ll be signed in automatically.
+      </div>
 
-  <!-- Signed in area -->
-  <section id="signedInArea" style="display:none;">
-    <h2 style="margin: 14px 0 6px;">Inventory</h2>
-    <div class="muted" id="subStatus"></div>
-    <div id="inventory" class="grid"></div>
-  </section>
+      <pre id="status">Signed out</pre>
+      <div id="subStatus" class="muted" style="margin-top:8px;"></div>
+    </section>
 
-  <section id="requestSection" style="display:none; margin-top:24px;">
-  <h2>Request</h2>
-  <div class="muted">Pick an item + date & time (Atlanta time).</div>
+    <!-- ===== Signed IN view ===== -->
+    <section id="signedInArea">
+      <div class="card">
+        <div class="topbar">
+          <div>
+            <div class="brand" style="font-size:22px;">Career Closet</div>
+            <div class="muted" style="margin-top:2px;">
+              <span class="pill">Signed in</span>
+              <span class="muted" style="margin-left:8px;" id="whoamiHint">Welcome!</span>
+            </div>
+          </div>
+          <div class="row">
+            <button id="btnLogout" type="button">Logout</button>
+          </div>
+        </div>
 
-  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
-    <div>
-      <div style="font-size:12px; color:#666;">Item ID</div>
-      <input id="reqItemId" placeholder="e.g. MBzBe1" style="padding:8px 10px; width:160px;">
-    </div>
+        <pre id="status" style="display:none;">Signed in</pre>
+        <div id="subStatus" class="muted" style="margin-top:8px;"></div>
 
-    <div>
-      <div style="font-size:12px; color:#666;">Date</div>
-      <input id="reqDate" type="date" style="padding:8px 10px;">
-    </div>
+        <div class="divider"></div>
 
-    <div>
-      <div style="font-size:12px; color:#666;">Start</div>
-      <input id="reqStart" type="time" step="900" style="padding:8px 10px;"> <!-- 15min step -->
-    </div>
+        <!-- Inventory header + search -->
+        <div class="row" style="align-items:end;">
+          <div>
+            <h2 style="margin:0;">Inventory</h2>
+            <div class="muted">Click an item to auto-fill the request form.</div>
+          </div>
+          <div class="right">
+            <div style="font-size:12px; color:#666;">Search</div>
+            <input id="invSearch" placeholder="Search by ID, brand, size, color..." style="min-width:260px;" />
+          </div>
+        </div>
 
-    <div>
-      <div style="font-size:12px; color:#666;">End</div>
-      <input id="reqEnd" type="time" step="900" style="padding:8px 10px;">
-    </div>
+        <div id="inventory" class="grid"></div>
+      </div>
 
-    <div>
-      <button id="btnSubmitRequest">Submit request</button>
-    </div>
+      <!-- Request -->
+      <section id="requestSection" class="card" style="margin-top:14px;">
+        <h2 style="margin:0 0 6px;">Request</h2>
+        <div class="muted">Pick an item + date & time (Atlanta time).</div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
+          <div>
+            <div style="font-size:12px; color:#666;">Item ID</div>
+            <input id="reqItemId" placeholder="e.g. MBzBe1" style="width:160px;">
+          </div>
+
+          <div>
+            <div style="font-size:12px; color:#666;">Date</div>
+            <input id="reqDate" type="date">
+          </div>
+
+          <div>
+            <div style="font-size:12px; color:#666;">Start</div>
+            <input id="reqStart" type="time" step="900"> <!-- 15min step -->
+          </div>
+
+          <div>
+            <div style="font-size:12px; color:#666;">End</div>
+            <input id="reqEnd" type="time" step="900">
+          </div>
+
+          <div>
+            <button id="btnSubmitRequest" type="button">Submit request</button>
+          </div>
+        </div>
+
+        <div id="reqStatus"></div>
+      </section>
+    </section>
+
+    <!-- Main JS -->
+    <script type="module" src="./auth.js?v=inv2"></script>
+
+    <!-- Tiny client-side search (filters already-rendered cards) -->
+    <script>
+      document.addEventListener("input", (e) => {
+        if (e.target && e.target.id === "invSearch") {
+          const q = (e.target.value || "").trim().toLowerCase();
+          const cards = document.querySelectorAll("#inventory .card, #inventory .item-card, #inventory > div");
+          cards.forEach((c) => {
+            const text = (c.textContent || "").toLowerCase();
+            c.style.display = q === "" || text.includes(q) ? "" : "none";
+          });
+        }
+      });
+    </script>
   </div>
-
-  <div id="reqStatus" style="margin-top:10px; padding:10px; background:#f6f6f6; border-radius:8px; white-space:pre-wrap;"></div>
-</section>
-
-
-  <!-- Main JS -->
-  <script type="module" src="./auth.js?v=inv1"></script>
 </body>
 </html>
