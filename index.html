@@ -51,6 +51,40 @@
     <div id="inventory" class="grid"></div>
   </section>
 
+  <section id="requestSection" style="display:none; margin-top:24px;">
+  <h2>Request</h2>
+  <div class="muted">Pick an item + date & time (Atlanta time).</div>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:10px;">
+    <div>
+      <div style="font-size:12px; color:#666;">Item ID</div>
+      <input id="reqItemId" placeholder="e.g. MBzBe1" style="padding:8px 10px; width:160px;">
+    </div>
+
+    <div>
+      <div style="font-size:12px; color:#666;">Date</div>
+      <input id="reqDate" type="date" style="padding:8px 10px;">
+    </div>
+
+    <div>
+      <div style="font-size:12px; color:#666;">Start</div>
+      <input id="reqStart" type="time" step="900" style="padding:8px 10px;"> <!-- 15min step -->
+    </div>
+
+    <div>
+      <div style="font-size:12px; color:#666;">End</div>
+      <input id="reqEnd" type="time" step="900" style="padding:8px 10px;">
+    </div>
+
+    <div>
+      <button id="btnSubmitRequest">Submit request</button>
+    </div>
+  </div>
+
+  <div id="reqStatus" style="margin-top:10px; padding:10px; background:#f6f6f6; border-radius:8px; white-space:pre-wrap;"></div>
+</section>
+
+
   <!-- Main JS -->
   <script type="module" src="./auth.js?v=inv1"></script>
 </body>
