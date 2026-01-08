@@ -248,34 +248,44 @@ function wireInventorySearch() {
 }
 
 function wireRequestEvents() {
-  const btn = $("btnSubmitRequest");
-  if (!btn) return;
+  const btnPreview = $("btnSubmitRequest");
+  const btnReserve = $("btnReserve");
+  const out = $("reqStatus");
 
-  btn.addEventListener("click", () => {
-    const itemId = ($("reqItemId")?.value || "").trim();
-    const date = ($("reqDate")?.value || "").trim();
-    const start = ($("reqStart")?.value || "").trim();
-    const end = ($("reqEnd")?.value || "").trim();
-    const out = $("reqStatus");
-    if (!out) return;
+  if (!btnPreview && !btnReserve) return;
 
-    if (!itemId) {
-      out.textContent = "Please select an item.";
+  function getFormValues() {
+    return {
+      itemId: ($("reqItemId")?.value || "").trim(),
+      date: ($("reqDate")?.value || "").trim(),        // YYYY-MM-DD
+      start: ($("reqStart")?.value || "").trim(),      // HH:MM
+      end: ($("reqEnd")?.value || "").trim(),          // HH:MM
+      fullName: ($("reqFullName")?.value || "").trim(),
+      emoryId: ($("reqEmoryId")?.value || "").trim(),
+      phone: ($("reqPhone")?.value || "").trim(),
+    };
+  }
+
+  function validatePreview(v) {
+    if (!v.itemId) return "Please select an item.";
+    if (!v.date || !v.start || !v.end) return "Please pick Date + Start + End.";
+
+    const d1 = new Date(`${v.date}T${v.start}:00`);
+    const d2 = new Date(`${v.date}T${v.end}:00`);
+    if (!(d2 > d1)) return "End time must be after Start time.";
+
+    return null;
+  }
+
+  function renderPreview(v) {
+    const err = validatePreview(v);
+    if (err) {
+      if (out) out.textContent = err;
       return;
     }
-    if (!date || !start || !end) {
-      out.textContent = "Please pick Date + Start + End.";
-      return;
-    }
 
-    const startIso = `${date}T${start}:00`;
-    const endIso = `${date}T${end}:00`;
-    const d1 = new Date(startIso);
-    const d2 = new Date(endIso);
-    if (!(d2 > d1)) {
-      out.textContent = "End time must be after Start time.";
-      return;
-    }
+    const d1 = new Date(`${v.date}T${v.start}:00`);
+    const d2 = new Date(`${v.date}T${v.end}:00`);
 
     const fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
@@ -287,13 +297,79 @@ function wireRequestEvents() {
       hour12: true,
     });
 
-    out.textContent =
-      `Request preview (Atlanta time)\n` +
-      `Item: ${itemId}\n` +
-      `Start: ${fmt.format(d1)}\n` +
-      `End:   ${fmt.format(d2)}\n`;
-  });
+    if (out) {
+      out.textContent =
+        `Request preview (Atlanta time)\n` +
+        `Item: ${v.itemId}\n` +
+        `Start: ${fmt.format(d1)}\n` +
+        `End:   ${fmt.format(d2)}\n`;
+    }
+  }
+
+  async function submitReservationSingle(v) {
+    if (!v.itemId) { if (out) out.textContent = "Please select an item."; return; }
+    if (!v.date) { if (out) out.textContent = "Please select a pickup date."; return; }
+    if (!v.fullName) { if (out) out.textContent = "Full name is required."; return; }
+    if (!v.emoryId) { if (out) out.textContent = "Emory ID is required."; return; }
+
+    const { data: sessData, error: sessErr } = await supabase.auth.getSession();
+    if (sessErr || !sessData?.session?.access_token) {
+      if (out) out.textContent = "Not signed in.";
+      return;
+    }
+
+    const accessToken = sessData.session.access_token;
+
+    if (out) out.textContent = "Submitting reservation...";
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-reservation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${accessToken}`,
+        "apikey": SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        cart_items: [v.itemId],
+        full_name: v.fullName,
+        emory_id: v.emoryId,
+        phone: v.phone,
+        pickup_date: v.date,
+        pickup_time: v.start || null, // use start as pickup time
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      if (out) out.textContent = `Reserve failed: ${json?.error || res.statusText}`;
+      return;
+    }
+
+    if (out) out.textContent = `Reserved OK. Reservation ID: ${json?.result?.reservation_id ?? "?"}`;
+    await loadInventory();
+  }
+
+  if (btnPreview) {
+    btnPreview.addEventListener("click", () => {
+      const v = getFormValues();
+      renderPreview(v);
+    });
+  }
+
+  if (btnReserve) {
+    btnReserve.addEventListener("click", async () => {
+      try {
+        const v = getFormValues();
+        await submitReservationSingle(v);
+      } catch (e) {
+        if (out) out.textContent = `Error: ${e?.message || String(e)}`;
+        console.error(e);
+      }
+    });
+  }
 }
+
 
 function wireAuthEvents() {
   const elEmail = $("email");
