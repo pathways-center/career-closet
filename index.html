@@ -17,6 +17,9 @@
     .brand { font-weight:800; font-size:28px; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
+    .item-card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; cursor:pointer; }
+    .item-card:hover { border-color:#bbb; }
+
     .imgbox { width:100%; aspect-ratio: 4/5; background:#f6f6f6; border-radius: 10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
     .imgbox img { width:100%; height:100%; object-fit:cover; display:block; }
 
@@ -33,8 +36,9 @@
 
     #reqStatus { margin-top:10px; padding:10px; background:#f6f6f6; border-radius:8px; white-space:pre-wrap; min-height: 20px; }
 
-    /* Hide blocks by default; auth.js will toggle */
-    #signedOutHint, #signedInArea, #requestSection { display:none; }
+    #signedOutHint { display:block; }
+    #signedInArea { display:none; }
+    #requestSection { display:block; } /* requestSection 在 signedInArea 内部，最终由 JS 控制整体 */
   </style>
 </head>
 
@@ -59,7 +63,6 @@
         After you click the magic link in your email, you’ll be signed in automatically.
       </div>
 
-      <!-- ✅ only ONE status + subStatus in the whole page -->
       <pre id="status">Signed out</pre>
       <div id="subStatus" class="muted" style="margin-top:8px;"></div>
     </section>
@@ -122,7 +125,7 @@
           </div>
 
           <div>
-            <button id="btnSubmitRequest" type="button">Submit request</button>
+            <button id="btnSubmitRequest" type="button">Preview request</button>
           </div>
         </div>
 
@@ -130,13 +133,13 @@
       </section>
     </section>
 
-    <script type="module" src="./auth.js?v=inv2"></script>
+    <script type="module" src="./auth.js?v=inv3"></script>
 
     <script>
       document.addEventListener("input", (e) => {
         if (e.target && e.target.id === "invSearch") {
           const q = (e.target.value || "").trim().toLowerCase();
-          const cards = document.querySelectorAll("#inventory .card, #inventory > div");
+          const cards = document.querySelectorAll("#inventory .item-card");
           cards.forEach((c) => {
             const text = (c.textContent || "").toLowerCase();
             c.style.display = q === "" || text.includes(q) ? "" : "none";
