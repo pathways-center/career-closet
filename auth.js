@@ -1,7 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-console.log("[auth.js] loaded on", location.href);
-
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
 const BUCKET = "career-closet";
@@ -9,7 +7,37 @@ const BUCKET = "career-closet";
 const BASE_URL = new URL(".", import.meta.url).href;
 const IS_CALLBACK_PAGE = window.location.pathname.includes("/auth/callback/");
 
+function safePageId() {
+  const hasToken = (window.location.hash || "").includes("access_token=");
+  return `${window.location.origin}${window.location.pathname}${hasToken ? " (hash_has_token)" : ""}`;
+}
+
+console.log("[auth.js] loaded on", safePageId());
+
+function createLoggedFetch(timeoutMs = 12000) {
+  return async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input?.url;
+    const method = init.method || "GET";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error("fetch timeout")), timeoutMs);
+
+    console.log("[fetch:start]", method, url);
+
+    try {
+      const res = await fetch(input, { ...init, signal: controller.signal });
+      console.log("[fetch:end]", method, url, res.status);
+      return res;
+    } catch (e) {
+      console.log("[fetch:err]", method, url, e?.message || String(e));
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: createLoggedFetch(12000) },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -51,10 +79,10 @@ function withTimeout(promise, ms, label) {
 }
 
 async function handleAuthRedirect() {
-  const hash = new URLSearchParams((location.hash || "").replace(/^#/, ""));
-  const access_token = hash.get("access_token");
-  const refresh_token = hash.get("refresh_token");
-  const err = hash.get("error_description") || hash.get("error");
+  const hashParams = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+  const access_token = hashParams.get("access_token");
+  const refresh_token = hashParams.get("refresh_token");
+  const err = hashParams.get("error_description") || hashParams.get("error");
 
   if (err) {
     setStatus(`Auth error: ${err}`);
@@ -72,7 +100,7 @@ async function handleAuthRedirect() {
       "setSession"
     );
 
-    console.log("[auth] setSession from hash:", { ok: !error, error });
+    console.log("[auth] setSession result:", { ok: !error, error });
     if (error) throw error;
 
     const { data } = await withTimeout(supabase.auth.getSession(), 15000, "getSession");
@@ -336,6 +364,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
       setStatus("No auth tokens found in URL.");
+      setSubStatus("");
       return;
     }
 
@@ -350,6 +379,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await refreshUi();
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
+    setSubStatus("");
     console.error(e);
   }
 });
