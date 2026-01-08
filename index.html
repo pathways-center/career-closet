@@ -6,7 +6,6 @@
   <title>Career Closet</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; margin: 24px; background:#fff; color:#111; }
-    h1 { margin: 0 0 12px; }
     h2 { margin: 18px 0 8px; }
 
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -18,7 +17,6 @@
     .brand { font-weight:800; font-size:28px; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
-    .item-card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; cursor:pointer; }
     .imgbox { width:100%; aspect-ratio: 4/5; background:#f6f6f6; border-radius: 10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
     .imgbox img { width:100%; height:100%; object-fit:cover; display:block; }
 
@@ -31,10 +29,8 @@
     .pill { display:inline-block; padding:6px 10px; border:1px solid #eee; border-radius:999px; background:#fafafa; font-size:12px; }
     .right { margin-left:auto; }
 
-    /* simple layout container */
     .container { max-width: 1100px; margin: 0 auto; }
 
-    /* request status box */
     #reqStatus { margin-top:10px; padding:10px; background:#f6f6f6; border-radius:8px; white-space:pre-wrap; min-height: 20px; }
 
     /* Hide blocks by default; auth.js will toggle */
@@ -44,6 +40,7 @@
 
 <body>
   <div class="container">
+
     <!-- ===== Signed OUT view ===== -->
     <section id="signedOutHint" class="card">
       <div class="brand">Career Closet</div>
@@ -53,7 +50,6 @@
 
       <div class="divider"></div>
 
-      <!-- Login UI only shows when signed out -->
       <div class="row">
         <input id="email" type="email" placeholder="you@emory.edu" autocomplete="email" style="min-width:260px;" />
         <button id="btnLogin" type="button">Send magic link</button>
@@ -63,6 +59,7 @@
         After you click the magic link in your email, you’ll be signed in automatically.
       </div>
 
+      <!-- ✅ only ONE status + subStatus in the whole page -->
       <pre id="status">Signed out</pre>
       <div id="subStatus" class="muted" style="margin-top:8px;"></div>
     </section>
@@ -83,12 +80,8 @@
           </div>
         </div>
 
-        <pre id="status" style="display:none;">Signed in</pre>
-        <div id="subStatus" class="muted" style="margin-top:8px;"></div>
-
         <div class="divider"></div>
 
-        <!-- Inventory header + search -->
         <div class="row" style="align-items:end;">
           <div>
             <h2 style="margin:0;">Inventory</h2>
@@ -103,7 +96,6 @@
         <div id="inventory" class="grid"></div>
       </div>
 
-      <!-- Request -->
       <section id="requestSection" class="card" style="margin-top:14px;">
         <h2 style="margin:0 0 6px;">Request</h2>
         <div class="muted">Pick an item + date & time (Atlanta time).</div>
@@ -121,7 +113,7 @@
 
           <div>
             <div style="font-size:12px; color:#666;">Start</div>
-            <input id="reqStart" type="time" step="900"> <!-- 15min step -->
+            <input id="reqStart" type="time" step="900">
           </div>
 
           <div>
@@ -138,15 +130,13 @@
       </section>
     </section>
 
-    <!-- Main JS -->
     <script type="module" src="./auth.js?v=inv2"></script>
 
-    <!-- Tiny client-side search (filters already-rendered cards) -->
     <script>
       document.addEventListener("input", (e) => {
         if (e.target && e.target.id === "invSearch") {
           const q = (e.target.value || "").trim().toLowerCase();
-          const cards = document.querySelectorAll("#inventory .card, #inventory .item-card, #inventory > div");
+          const cards = document.querySelectorAll("#inventory .card, #inventory > div");
           cards.forEach((c) => {
             const text = (c.textContent || "").toLowerCase();
             c.style.display = q === "" || text.includes(q) ? "" : "none";
