@@ -88,7 +88,7 @@ function clearStoredSession() {
 function storeSessionFromHash() {
   const hashParams = new URLSearchParams((location.hash || "").replace(/^#/, ""));
   const access_token = hashParams.get("access_token");
-  const refresh_token = hashParams.get("refresh_token");
+  const _token = hashParams.get("_token");
   const token_type = hashParams.get("token_type") || "bearer";
   const expires_in = Number(hashParams.get("expires_in") || "3600");
   const expires_at_from_hash = Number(hashParams.get("expires_at") || "0");
@@ -101,12 +101,12 @@ function storeSessionFromHash() {
 
   const session = {
     access_token,
-    refresh_token: refresh_token || "",
+    _token: _token || "",
     token_type,
     expires_in,
     expires_at,
     provider_token: null,
-    provider_refresh_token: null,
+    provider__token: null,
     user: null,
   };
 
@@ -520,7 +520,7 @@ async function submitReservationCart() {
     6000
   );
 
-  // Clear cart + refresh UI
+  // Clear cart +  UI
   clearCart();
   renderInventory(LAST_INVENTORY);
   await loadInventoryViaRest(accessToken);
@@ -575,7 +575,7 @@ function wireAuthEvents() {
       } catch (e) {
         console.log("[logout]", e?.message || String(e));
       }
-      await refreshUi();
+      await Ui();
     });
   }
 }
