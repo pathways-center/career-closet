@@ -613,12 +613,14 @@ async function submitReservationCart() {
   if (!emoryId) { toast("Emory ID is required.", "error", 3000); return; }
 
   // Session
-  const { data: sessData, error: sessErr } = await supabase.auth.getSession();
-  if (sessErr || !sessData?.session?.access_token) {
-    toast("You are not signed in. Please sign in and try again.", "error", 4000);
+
+  const s = getStoredSession();
+  if (!s?.access_token) {
+    showToast("You are not signed in. Please sign in and try again.", "error");
     return;
   }
-  const accessToken = sessData.session.access_token;
+  const accessToken = s.access_token;
+
 
   toast("Submitting your reservation...", "info", 1500);
 
