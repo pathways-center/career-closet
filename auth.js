@@ -28,6 +28,32 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 function $(id) { return document.getElementById(id); }
+let __toastTimer = null;
+
+function toast(msg, kind = "info", ms = 2500) {
+  const t = $("toast");
+  if (!t) {
+    const out = $("reqStatus");
+    if (out) out.textContent = msg || "";
+    return;
+  }
+
+  t.className = `toast show ${kind}`;
+  t.textContent = msg || "";
+
+  t.onclick = () => {
+    t.className = "toast";
+    t.textContent = "";
+    if (__toastTimer) clearTimeout(__toastTimer);
+  };
+
+  if (__toastTimer) clearTimeout(__toastTimer);
+  __toastTimer = setTimeout(() => {
+    t.className = "toast";
+    t.textContent = "";
+  }, ms);
+}
+
 
 function setStatus(msg) {
   const el = $("status");
@@ -148,13 +174,13 @@ function addToCart(id) {
   id = String(id || "").trim();
   if (!id) return;
 
-  const out = $("reqStatus");
   if (CART.includes(id)) {
-    if (out) out.textContent = `Already in cart: ${id}`;
+    toast(`Already in cart: ${id}`, "info", 2000);
     return;
   }
+
   if (CART.length >= 5) {
-    if (out) out.textContent = "Cart limit: max 5 items.";
+    toast("Cart limit reached: you can select up to 5 items.", "error", 3000);
     return;
   }
 
@@ -163,8 +189,14 @@ function addToCart(id) {
   renderCart();
   updateCartBadge();
 
-  if (out) out.textContent = `Added to cart: ${id}`;
+  toast(`Added to cart: ${id} (${CART.length}/5)`, "success", 2000);
+
+  const out = $("reqStatus"); if (out) out.textContent = `Added to cart: ${id}`;
 }
+
+
+
+
 function removeFromCart(id) {
   CART = CART.filter(x => x !== id);
   saveCart();
@@ -395,51 +427,67 @@ function wireCartUiEvents() {
       renderInventory(LAST_INVENTORY);
     });
   }
-
+  
   if (btnReserveCart) {
-    btnReserveCart.addEventListener("click", async () => {
-      await withButtonLoading(btnReserveCart, "Reserving...", async () => {
-        try {
-          await submitReservationCart();
-        } catch (e) {
-          setReqStatus(`Error: ${e?.message || String(e)}`, "error");
-          console.error(e);
-        }
-      });
-    });
-  }
+  btnReserveCart.addEventListener("click", async () => {
+    const old = btnReserveCart.textContent;
+    btnReserveCart.disabled = true;
+    btnReserveCart.textContent = "Reserving...";
+    try {
+      await submitReservationCart();
+    } catch (e) {
+      toast(`Error: ${e?.message || String(e)}`, "error", 5000);
+      console.error(e);
+    } finally {
+      btnReserveCart.disabled = false;
+      btnReserveCart.textContent = old;
+    }
+  });
+}
+
+  
 }
 
 async function submitReservationCart() {
-  if (!CART.length) { setReqStatus("Your cart is empty. Select up to 5 items first.", "error", 3000); return; }
-
-  // 去重保护（避免重复 item）
-  const unique = Array.from(new Set(CART.map(x => String(x).trim()).filter(Boolean)));
-  if (unique.length !== CART.length) {
-    setReqStatus("Your cart has duplicate items. Please remove duplicates and try again.", "error");
+  // Basic cart checks
+  if (!CART.length) {
+    toast("Your cart is empty. Select up to 5 items first.", "error", 3000);
     return;
   }
-  if (unique.length > 5) { setReqStatus("Cart limit reached: you can select up to 5 items.", "error"); return; }
 
+  // De-dup + max 5
+  const unique = Array.from(new Set(CART.map((x) => String(x).trim()).filter(Boolean)));
+  if (unique.length !== CART.length) {
+    toast("Your cart contains duplicate items. Please remove duplicates and try again.", "error", 4000);
+    return;
+  }
+  if (unique.length > 5) {
+    toast("Cart limit reached: you can select up to 5 items.", "error", 3500);
+    return;
+  }
+
+  // Form fields
   const pickupDate = ($("reqDate")?.value || "").trim();       // YYYY-MM-DD
   const pickupTime = ($("reqStart")?.value || "").trim();      // HH:MM (optional)
   const fullName = ($("reqFullName")?.value || "").trim();
   const emoryId = ($("reqEmoryId")?.value || "").trim();
   const phone = ($("reqPhone")?.value || "").trim();
 
-  if (!pickupDate) { setReqStatus("Pickup date is required.", "error"); return; }
-  if (!fullName) { setReqStatus("Full name is required.", "error"); return; }
-  if (!emoryId) { setReqStatus("Emory ID is required.", "error"); return; }
+  if (!pickupDate) { toast("Pickup date is required.", "error", 3000); return; }
+  if (!fullName) { toast("Full name is required.", "error", 3000); return; }
+  if (!emoryId) { toast("Emory ID is required.", "error", 3000); return; }
 
+  // Session
   const { data: sessData, error: sessErr } = await supabase.auth.getSession();
   if (sessErr || !sessData?.session?.access_token) {
-    setReqStatus("You are not signed in. Please sign in and try again.", "error");
+    toast("You are not signed in. Please sign in and try again.", "error", 4000);
     return;
   }
   const accessToken = sessData.session.access_token;
 
-  setReqStatus("Submitting your reservation...", "info");
+  toast("Submitting your reservation...", "info", 1500);
 
+  // Call Edge Function
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-reservation`, {
     method: "POST",
     headers: {
@@ -447,7 +495,6 @@ async function submitReservationCart() {
       "authorization": `Bearer ${accessToken}`,
       "apikey": SUPABASE_ANON_KEY,
     },
-
     body: JSON.stringify({
       cart_items: unique,
       full_name: fullName,
@@ -462,20 +509,23 @@ async function submitReservationCart() {
 
   if (!res.ok) {
     const raw = json?.error || json?.message || res.statusText;
-    setReqStatus(`Reserve failed: ${humanizeReserveError(raw)}`, "error");
+    toast(`Reserve failed: ${humanizeReserveError(raw)}`, "error", 6500);
     return;
   }
 
   const rid = json?.result?.reservation_id ?? "?";
-  setReqStatus(
+  toast(
     `Reserved successfully.\nReservation ID: ${rid}\nYour items are now held for 48 hours (pending staff review).`,
-    "success"
+    "success",
+    6000
   );
 
+  // Clear cart + refresh UI
   clearCart();
   renderInventory(LAST_INVENTORY);
   await loadInventoryViaRest(accessToken);
 }
+
 
 
 /* ===================== AUTH ===================== */
