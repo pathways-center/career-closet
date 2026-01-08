@@ -2,24 +2,30 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 console.log("[auth.js] loaded on", location.href);
 
-// ====== Supabase config ======
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
 const BUCKET = "career-closet";
 
-// 以 auth.js 所在目录作为站点根（更鲁棒：不依赖硬编码 /career-closet/）
 const BASE_URL = new URL(".", import.meta.url).href;
+const IS_CALLBACK_PAGE = window.location.pathname.includes("/auth/callback/");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
 });
 
-function $(id) { return document.getElementById(id); }
+function $(id) {
+  return document.getElementById(id);
+}
+
 function setStatus(msg) {
   const el = $("status");
   if (el) el.textContent = msg ?? "";
   console.log("[status]", msg ?? "");
 }
+
 function setSubStatus(msg) {
   const el = $("subStatus");
   if (el) el.textContent = msg ?? "";
@@ -27,7 +33,6 @@ function setSubStatus(msg) {
 }
 
 function cleanUrl() {
-  // 清掉 query/hash，避免反复触发
   const url = window.location.origin + window.location.pathname;
   window.history.replaceState({}, document.title, url);
 }
@@ -73,16 +78,15 @@ async function handleAuthRedirect() {
     return true;
   }
 
-  return false; // 没有 auth 信息
+  return false;
 }
 
-// ====== Inventory ======
 function buildPublicImageUrl(image_path) {
   if (!image_path) return "";
-  // 保留路径层级（/），但对空格等特殊字符进行编码
   const encoded = encodeURIComponent(image_path).replaceAll("%2F", "/");
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}`;
 }
+
 function esc(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -101,11 +105,12 @@ function renderInventory(items) {
     return;
   }
 
-  el.innerHTML = items.map((row) => {
-    const imgUrl = row.image_path ? buildPublicImageUrl(row.image_path) : "";
-    const title = esc(row.inventory_id);
+  el.innerHTML = items
+    .map((row) => {
+      const imgUrl = row.image_path ? buildPublicImageUrl(row.image_path) : "";
+      const title = esc(row.inventory_id);
 
-    return `
+      return `
       <div class="item-card" data-inventory-id="${title}">
         <div class="imgbox">
           ${
@@ -127,15 +132,19 @@ function renderInventory(items) {
         </div>
       </div>
     `;
-  }).join("");
+    })
+    .join("");
 
-  // 图片加载失败时显示 fallback（避免 inline onerror，被 CSP 拦）
   el.querySelectorAll(".item-img").forEach((img) => {
-    img.addEventListener("error", () => {
-      img.style.display = "none";
-      const fallback = img.parentElement?.querySelector(".img-fallback");
-      if (fallback) fallback.style.display = "block";
-    }, { once: true });
+    img.addEventListener(
+      "error",
+      () => {
+        img.style.display = "none";
+        const fallback = img.parentElement?.querySelector(".img-fallback");
+        if (fallback) fallback.style.display = "block";
+      },
+      { once: true }
+    );
   });
 
   el.querySelectorAll(".item-card").forEach((card) => {
@@ -179,7 +188,6 @@ async function loadInventory() {
   setSubStatus("");
 }
 
-// ====== Request preview (Atlanta time) ======
 function wireRequestEvents() {
   const btn = $("btnSubmitRequest");
   if (!btn) return;
@@ -192,19 +200,32 @@ function wireRequestEvents() {
     const out = $("reqStatus");
     if (!out) return;
 
-    if (!itemId) { out.textContent = "Please select an item."; return; }
-    if (!date || !start || !end) { out.textContent = "Please pick Date + Start + End."; return; }
+    if (!itemId) {
+      out.textContent = "Please select an item.";
+      return;
+    }
+    if (!date || !start || !end) {
+      out.textContent = "Please pick Date + Start + End.";
+      return;
+    }
 
     const startIso = `${date}T${start}:00`;
     const endIso = `${date}T${end}:00`;
     const d1 = new Date(startIso);
     const d2 = new Date(endIso);
-    if (!(d2 > d1)) { out.textContent = "End time must be after Start time."; return; }
+    if (!(d2 > d1)) {
+      out.textContent = "End time must be after Start time.";
+      return;
+    }
 
     const fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hour12: true,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
 
     out.textContent =
@@ -215,7 +236,6 @@ function wireRequestEvents() {
   });
 }
 
-// ====== Auth UI ======
 function wireAuthEvents() {
   const elEmail = $("email");
   const btnLogin = $("btnLogin");
@@ -225,7 +245,10 @@ function wireAuthEvents() {
     btnLogin.addEventListener("click", async () => {
       try {
         const email = (elEmail.value || "").trim().toLowerCase();
-        if (!email) { setStatus("Please enter an email."); return; }
+        if (!email) {
+          setStatus("Please enter an email.");
+          return;
+        }
 
         setStatus("Sending magic link...");
         setSubStatus("");
@@ -278,7 +301,9 @@ async function refreshUi() {
   if (signedOutHint) signedOutHint.style.display = "none";
   if (signedInArea) signedInArea.style.display = "block";
 
-  await loadInventory();
+  if (!IS_CALLBACK_PAGE) {
+    await loadInventory();
+  }
 }
 
 supabase.auth.onAuthStateChange(async () => {
@@ -292,11 +317,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     wireInventorySearch();
 
     const established = await handleAuthRedirect();
-    await refreshUi();
 
-    if (window.location.pathname.includes("/auth/callback/") && established) {
+    if (IS_CALLBACK_PAGE && established) {
       window.location.replace(BASE_URL);
+      return;
     }
+
+    await refreshUi();
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
     console.error(e);
