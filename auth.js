@@ -316,6 +316,64 @@ function wireInventorySearch() {
   });
 }
 
+let __toastTimer = null;
+
+function setReqStatus(msg, kind = "info", autoClearMs = 0) {
+  const el = $("reqStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+
+  el.style.border = "1px solid #eee";
+  el.style.background = "#f6f6f6";
+  if (kind === "success") { el.style.background = "#f3fff3"; el.style.border = "1px solid #cfeccf"; }
+  if (kind === "error")   { el.style.background = "#fff3f3"; el.style.border = "1px solid #f0caca"; }
+
+  if (__toastTimer) clearTimeout(__toastTimer);
+  if (autoClearMs > 0) {
+    __toastTimer = setTimeout(() => {
+      el.textContent = "";
+      el.style.border = "1px solid #eee";
+      el.style.background = "#f6f6f6";
+    }, autoClearMs);
+  }
+}
+
+function humanizeReserveError(raw) {
+  const s = String(raw || "");
+
+  const m = s.match(/limit exceeded:\s*in_use=(\d+)\s+new=(\d+)\s+max=(\d+)/i);
+  if (m) {
+    const inUse = Number(m[1]);
+    const newly = Number(m[2]);
+    const max = Number(m[3]);
+    const remaining = Math.max(0, max - inUse);
+
+    if (remaining === 0) {
+      return `You already have ${inUse} active item(s) (not returned / not completed), which is the maximum (${max}). Please return or cancel items before reserving more.`;
+    }
+    return `You already have ${inUse} active item(s). You're trying to reserve ${newly} more, which would exceed the limit (${max}). You can reserve up to ${remaining} more right now.`;
+  }
+
+  if (/missing bearer token/i.test(s)) return "You are not signed in. Please sign in and try again.";
+  if (/invalid token|invalid jwt/i.test(s)) return "Your session expired. Please sign in again.";
+
+  return s;
+}
+
+async function withButtonLoading(btn, busyText, fn) {
+  if (!btn) return await fn();
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyText;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+
+
 /* ===================== RESERVE CART ===================== */
 
 function wireCartUiEvents() {
@@ -333,31 +391,35 @@ function wireCartUiEvents() {
   if (btnClearCart) {
     btnClearCart.addEventListener("click", () => {
       clearCart();
-      const out = $("reqStatus");
-      if (out) out.textContent = "Cart cleared.";
-      // also refresh buttons state
+      setReqStatus("Cart cleared.", "info", 2500);
       renderInventory(LAST_INVENTORY);
     });
   }
 
   if (btnReserveCart) {
     btnReserveCart.addEventListener("click", async () => {
-      try {
-        await submitReservationCart();
-      } catch (e) {
-        const out = $("reqStatus");
-        if (out) out.textContent = `Error: ${e?.message || String(e)}`;
-        console.error(e);
-      }
+      await withButtonLoading(btnReserveCart, "Reserving...", async () => {
+        try {
+          await submitReservationCart();
+        } catch (e) {
+          setReqStatus(`Error: ${e?.message || String(e)}`, "error");
+          console.error(e);
+        }
+      });
     });
   }
 }
 
 async function submitReservationCart() {
-  const out = $("reqStatus");
+  if (!CART.length) { setReqStatus("Your cart is empty. Select up to 5 items first.", "error", 3000); return; }
 
-  if (!CART.length) { if (out) out.textContent = "Cart is empty."; return; }
-  if (CART.length > 5) { if (out) out.textContent = "Cart limit: max 5 items."; return; }
+  // 去重保护（避免重复 item）
+  const unique = Array.from(new Set(CART.map(x => String(x).trim()).filter(Boolean)));
+  if (unique.length !== CART.length) {
+    setReqStatus("Your cart has duplicate items. Please remove duplicates and try again.", "error");
+    return;
+  }
+  if (unique.length > 5) { setReqStatus("Cart limit reached: you can select up to 5 items.", "error"); return; }
 
   const pickupDate = ($("reqDate")?.value || "").trim();       // YYYY-MM-DD
   const pickupTime = ($("reqStart")?.value || "").trim();      // HH:MM (optional)
@@ -365,18 +427,18 @@ async function submitReservationCart() {
   const emoryId = ($("reqEmoryId")?.value || "").trim();
   const phone = ($("reqPhone")?.value || "").trim();
 
-  if (!pickupDate) { if (out) out.textContent = "Please select a pickup date."; return; }
-  if (!fullName) { if (out) out.textContent = "Full name is required."; return; }
-  if (!emoryId) { if (out) out.textContent = "Emory ID is required."; return; }
+  if (!pickupDate) { setReqStatus("Pickup date is required.", "error"); return; }
+  if (!fullName) { setReqStatus("Full name is required.", "error"); return; }
+  if (!emoryId) { setReqStatus("Emory ID is required.", "error"); return; }
 
   const { data: sessData, error: sessErr } = await supabase.auth.getSession();
   if (sessErr || !sessData?.session?.access_token) {
-    if (out) out.textContent = "Not signed in.";
+    setReqStatus("You are not signed in. Please sign in and try again.", "error");
     return;
   }
   const accessToken = sessData.session.access_token;
 
-  if (out) out.textContent = "Submitting reservation...";
+  setReqStatus("Submitting your reservation...", "info");
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-reservation`, {
     method: "POST",
@@ -385,8 +447,9 @@ async function submitReservationCart() {
       "authorization": `Bearer ${accessToken}`,
       "apikey": SUPABASE_ANON_KEY,
     },
+
     body: JSON.stringify({
-      cart_items: CART,               // ✅ 一次提交多个
+      cart_items: unique,
       full_name: fullName,
       emory_id: emoryId,
       phone: phone,
@@ -396,17 +459,24 @@ async function submitReservationCart() {
   });
 
   const json = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    if (out) out.textContent = `Reserve failed: ${json?.error || res.statusText}`;
+    const raw = json?.error || json?.message || res.statusText;
+    setReqStatus(`Reserve failed: ${humanizeReserveError(raw)}`, "error");
     return;
   }
 
-  if (out) out.textContent = `Reserved OK. Reservation ID: ${json?.result?.reservation_id ?? "?"}`;
+  const rid = json?.result?.reservation_id ?? "?";
+  setReqStatus(
+    `Reserved successfully.\nReservation ID: ${rid}\nYour items are now held for 48 hours (pending staff review).`,
+    "success"
+  );
 
   clearCart();
-  renderInventory(LAST_INVENTORY); // refresh "In cart" buttons
+  renderInventory(LAST_INVENTORY);
   await loadInventoryViaRest(accessToken);
 }
+
 
 /* ===================== AUTH ===================== */
 
