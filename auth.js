@@ -30,29 +30,30 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 function $(id) { return document.getElementById(id); }
 let __toastTimer = null;
 
-function toast(msg, kind = "info", ms = 2500) {
-  const t = $("toast");
-  if (!t) {
-    const out = $("reqStatus");
-    if (out) out.textContent = msg || "";
-    return;
-  }
+function toast(message, kind = "info", ms = 2500) {
+  const el = document.getElementById("toast");
+  if (!el) return;
 
-  t.className = `toast show ${kind}`;
-  t.textContent = msg || "";
+  el.className = `toast show ${kind}`;
+  el.textContent = String(message || "");
 
-  t.onclick = () => {
-    t.className = "toast";
-    t.textContent = "";
-    if (__toastTimer) clearTimeout(__toastTimer);
-  };
+  // use a single global timer to avoid "already declared" errors
+  if (globalThis.__ccToastTimer) clearTimeout(globalThis.__ccToastTimer);
 
-  if (__toastTimer) clearTimeout(__toastTimer);
-  __toastTimer = setTimeout(() => {
-    t.className = "toast";
-    t.textContent = "";
+  globalThis.__ccToastTimer = setTimeout(() => {
+    el.className = "toast";
+    el.textContent = "";
+    globalThis.__ccToastTimer = null;
   }, ms);
+
+  el.onclick = () => {
+    el.className = "toast";
+    el.textContent = "";
+    if (globalThis.__ccToastTimer) clearTimeout(globalThis.__ccToastTimer);
+    globalThis.__ccToastTimer = null;
+  };
 }
+
 
 
 function setStatus(msg) {
@@ -348,7 +349,6 @@ function wireInventorySearch() {
   });
 }
 
-let __toastTimer = null;
 
 function setReqStatus(msg, kind = "info", autoClearMs = 0) {
   const el = $("reqStatus");
