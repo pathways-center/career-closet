@@ -398,6 +398,130 @@ function wireInventoryFilters() {
   $("filterAvailableOnly")?.addEventListener("change", () => applyInventoryFilters());
 }
 
+function fmtDate(d) {
+  if (!d) return "-";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(d));
+}
+
+function fmtDateTime(d) {
+  if (!d) return "-";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(d));
+}
+
+function pickupLabel(pickup_date, pickup_time) {
+  if (!pickup_date) return "-";
+  if (!pickup_time) return String(pickup_date);
+  return `${pickup_date} ${String(pickup_time).slice(0,5)}`;
+}
+
+async function loadMyLoansViaRest(accessToken) {
+  const summaryEl = $("loanSummary");
+  const activeEl = $("loansActive");
+  const histEl = $("loansHistory");
+
+  if (!summaryEl || !activeEl || !histEl) return;
+
+  summaryEl.textContent = "Loading...";
+  activeEl.textContent = "";
+  histEl.textContent = "";
+
+  const select =
+    "reservation_id,reservation_status,pickup_date,pickup_time,reservation_created_at,expected_return_date," +
+    "inventory_id,item_status,checkout_at,return_at,due_date,brand,color,size,fit,category,item_current_status,image_path";
+
+  const url =
+    `${SUPABASE_URL}/rest/v1/v_student_loans` +
+    `?select=${encodeURIComponent(select)}` +
+    `&order=${encodeURIComponent("reservation_created_at.desc")}`;
+
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Accept: "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  const rows = await fetchJson(url, { headers, timeoutMs: 12000 });
+  const items = Array.isArray(rows) ? rows : [];
+
+  const isActive = (r) => {
+    const rs = String(r.reservation_status || "").toLowerCase();
+    const is = String(r.item_status || "").toLowerCase();
+    if (rs === "rejected") return false;
+    if (is === "returned" || is === "rejected") return false;
+    return is === "reserved" || is === "checked_out" || is === "held" || !r.return_at;
+  };
+
+  const active = items.filter(isActive);
+  const history = items.filter((x) => !isActive(x));
+
+  const activeCount = active.filter((x) => String(x.item_status || "").toLowerCase() === "checked_out" && !x.return_at).length;
+  const remaining = Math.max(0, 5 - activeCount);
+
+  summaryEl.textContent = `Active (checked out, not returned): ${activeCount} / 5 • Remaining quota: ${remaining}`;
+
+  function cardRow(r) {
+    const title = `${r.inventory_id || "-"}`;
+    const meta = [
+      `Category: ${r.category || "-"}`,
+      `Status: ${r.item_status || "-"}`,
+      `Pickup: ${pickupLabel(r.pickup_date, r.pickup_time)}`,
+      `Due: ${r.due_date || r.expected_return_date || "-"}`,
+      `Check-out: ${fmtDateTime(r.checkout_at)}`,
+      `Check-in: ${fmtDateTime(r.return_at)}`,
+    ].join(" • ");
+
+    const imgUrl = r.image_path ? buildPublicImageUrl(r.image_path) : "";
+
+    return `
+      <div class="card" style="margin:10px 0; padding:12px;">
+        <div class="row" style="align-items:flex-start;">
+          <div style="width:72px; height:90px; border-radius:10px; overflow:hidden; background:#f6f6f6; flex:0 0 auto;">
+            ${imgUrl ? `<img src="${imgUrl}" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">` : ""}
+          </div>
+          <div style="min-width:0; flex:1;">
+            <div style="font-weight:800;">${esc(title)}</div>
+            <div class="muted" style="margin-top:4px; line-height:1.35;">${esc(meta)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  activeEl.innerHTML = active.length ? active.map(cardRow).join("") : `<div class="muted">No active loans.</div>`;
+  histEl.innerHTML = history.length ? history.map(cardRow).join("") : `<div class="muted">No history yet.</div>`;
+}
+
+function wireLoansEvents() {
+  const btn = $("btnRefreshLoans");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    const session = getStoredSession();
+    const token = session?.access_token;
+    if (!token) return;
+    try {
+      await loadMyLoansViaRest(token);
+      showToast("Loans refreshed.", "success", 1800);
+    } catch (e) {
+      showToast(`Failed to load loans: ${e?.message || String(e)}`, "error", 4000);
+    }
+  });
+}
+
+
 function renderInventory(items) {
   const el = $("inventory");
   if (!el) return;
@@ -775,6 +899,9 @@ async function refreshUi() {
   if (signedInArea) signedInArea.style.display = "block";
 
   await loadInventoryViaRest(session.access_token);
+
+  await loadMyLoansViaRest(session.access_token);
+  
   renderCart();
 }
 
@@ -807,9 +934,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     wireAuthEvents();
     wireCartUiEvents();
     wireInventoryFilters();
+    wireLoansEvents();
 
     await refreshUi();     // 先把 UI 刷到正确状态
     startIdleLogout();     // 再启动 15 分钟无操作自动登出
+    
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
     setSubStatus("");
