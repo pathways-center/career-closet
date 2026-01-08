@@ -558,3 +558,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error(e);
   }
 });
+// ===== Force-bind cart buttons (fallback) =====
+function wireReserveCartFallback() {
+  const btn = document.getElementById("btnReserveCart");
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", async () => {
+      console.log("[btnReserveCart] clicked");
+      try {
+        if (typeof submitReservationCart === "function") {
+          await submitReservationCart();
+        } else if (typeof submitReservationSingle === "function") {
+          await submitReservationSingle();
+        } else {
+          alert("submitReservationCart() not found in auth.js");
+        }
+      } catch (e) {
+        console.error(e);
+        const out = document.getElementById("reqStatus");
+        if (out) out.textContent = `Error: ${e?.message || String(e)}`;
+      }
+    });
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  wireReserveCartFallback();
+});
