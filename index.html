@@ -17,15 +17,28 @@
     .brand { font-weight:800; font-size:28px; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
-    .item-card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
-    .item-card:hover { border-color:#bbb; }
+
+    .item-card {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px;
+      background:#fff;
+      transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+    }
+    .item-card:hover { border-color:#bbb; box-shadow: 0 6px 18px rgba(0,0,0,.06); transform: translateY(-1px); }
 
     .imgbox { width:100%; aspect-ratio: 4/5; background:#f6f6f6; border-radius: 10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
     .imgbox img { width:100%; height:100%; object-fit:cover; display:block; }
 
-    input, button { padding: 8px 10px; }
-    button { cursor:pointer; }
+    input, button, select { padding: 8px 10px; border-radius: 10px; border:1px solid #e5e5e5; }
+    input:focus, select:focus { outline: none; border-color:#cfcfcf; box-shadow: 0 0 0 3px rgba(0,0,0,.04); }
+    button { cursor:pointer; background:#111; color:#fff; border:1px solid #111; }
+    button:hover { opacity: .92; }
     button:disabled { opacity: .5; cursor:not-allowed; }
+
+    .btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 999px; }
+    .btn-ghost { background:#fff; color:#111; border:1px solid #e5e5e5; }
+    .btn-ghost:hover { background:#fafafa; }
 
     pre { background: #fafafa; border:1px solid #eee; padding: 10px; border-radius: 10px; white-space: pre-wrap; margin: 10px 0 0; }
 
@@ -34,16 +47,38 @@
 
     .container { max-width: 1100px; margin: 0 auto; }
 
-    #reqStatus { margin-top:10px; padding:10px; background:#f6f6f6; border-radius:8px; white-space:pre-wrap; min-height: 20px; }
+    #reqStatus { margin-top:10px; padding:10px; background:#f6f6f6; border-radius:10px; white-space:pre-wrap; min-height: 20px; border:1px solid #eee; }
 
     #signedOutHint { display:block; }
     #signedInArea { display:none; }
     #requestSection { display:block; }
 
     .cartline { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid #eee; }
-    .btn-sm { padding: 6px 10px; font-size: 12px; }
 
-        /* ===== Toast popup (top-right) ===== */
+    .section-title { font-weight:800; margin:0; }
+    .hint { font-size: 12px; color:#666; margin-top:4px; }
+
+    .cart-layout {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 12px;
+      margin-top: 10px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .cart-layout { grid-template-columns: 1fr; }
+    }
+
+    .panel { border:1px solid #eee; border-radius: 12px; padding: 12px; background:#fff; }
+    .panel-header { display:flex; gap:10px; align-items:center; }
+    .panel-header .right { margin-left:auto; }
+
+    .sticky {
+      position: sticky;
+      top: 14px;
+    }
+
+    /* ===== Toast popup (top-right) ===== */
     .toast{
       position: fixed;
       top: 16px;
@@ -63,22 +98,18 @@
       font-size: 14px;
       line-height: 1.35;
     }
-    
     .toast.show{
       opacity: 1;
       transform: translateY(0);
       pointer-events: auto;
       cursor: pointer;
     }
-    
     .toast.info{ background:#111; }
     .toast.success{ background:#127a33; }
     .toast.error{ background:#b3261e; }
-
   </style>
 </head>
 
-  
 <body>
   <div class="container">
 
@@ -116,8 +147,8 @@
             </div>
           </div>
           <div class="row">
-            <button id="btnOpenCart" type="button">Reserve cart (<span id="cartCount">0</span>)</button>
-            <button id="btnLogout" type="button">Logout</button>
+            <button id="btnOpenCart" type="button" class="btn-ghost">Reserve cart (<span id="cartCount">0</span>)</button>
+            <button id="btnLogout" type="button" class="btn-ghost">Logout</button>
           </div>
         </div>
 
@@ -138,63 +169,80 @@
       </div>
 
       <section id="requestSection" class="card" style="margin-top:14px;">
-        <h2 style="margin:0 0 6px;">Reserve cart</h2>
-        <div class="muted">Select up to 5 items, then pick a pickup date/time (Atlanta time).</div>
-
-        <!-- Cart list -->
-        <div style="margin-top:10px;">
-          <div style="display:flex; gap:10px; align-items:center;">
-            <div style="font-weight:800;">Cart items</div>
-            <div class="right"></div>
-            <button id="btnClearCart" type="button" class="btn-sm">Clear</button>
+        <div class="row" style="align-items:flex-end;">
+          <div>
+            <h2 class="section-title">Reserve cart</h2>
+            <div class="hint">Select up to 5 items, then choose pickup date/time (Atlanta time).</div>
           </div>
-          <div id="cartList" style="margin-top:6px;"></div>
+          <div class="right"></div>
+          <button id="btnClearCart" type="button" class="btn-sm btn-ghost">Clear cart</button>
         </div>
 
-        <!-- Form -->
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:12px;">
-          <div>
-            <div style="font-size:12px; color:#666;">Pickup Date</div>
-            <input id="reqDate" type="date">
+        <div class="cart-layout">
+          <!-- Left: cart list -->
+          <div class="panel">
+            <div class="panel-header">
+              <div style="font-weight:800;">Cart items</div>
+              <div class="right muted" style="font-size:12px;">Max 5</div>
+            </div>
+            <div id="cartList" style="margin-top:8px;">
+              <div class="muted">No items in cart yet.</div>
+            </div>
           </div>
 
-          <div>
-            <div style="font-size:12px; color:#666;">Pickup Time (optional)</div>
-            <input id="reqStart" type="time" step="900">
-          </div>
+          <!-- Right: form (sticky) -->
+          <div class="panel sticky">
+            <div class="panel-header">
+              <div style="font-weight:800;">Pickup details</div>
+            </div>
 
-          <div style="min-width:260px; flex:1;">
-            <div style="font-size:12px; color:#666;">Full name</div>
-            <input id="reqFullName" type="text" placeholder="Full name" style="width:100%;">
-          </div>
+            <div style="display:grid; gap:10px; margin-top:10px;">
+              <div>
+                <div style="font-size:12px; color:#666;">Pickup Date</div>
+                <input id="reqDate" type="date" style="width:100%;">
+              </div>
 
-          <div style="min-width:260px; flex:1;">
-            <div style="font-size:12px; color:#666;">Email (read-only)</div>
-            <input id="reqEmail" type="email" readonly style="width:100%;">
-          </div>
+              <div>
+                <div style="font-size:12px; color:#666;">Pickup Time (optional)</div>
+                <input id="reqStart" type="time" step="900" style="width:100%;">
+              </div>
 
-          <div style="min-width:160px;">
-            <div style="font-size:12px; color:#666;">Emory ID</div>
-            <input id="reqEmoryId" type="text" placeholder="Emory ID" style="width:160px;">
-          </div>
+              <div>
+                <div style="font-size:12px; color:#666;">Full name</div>
+                <input id="reqFullName" type="text" placeholder="Full name" style="width:100%;">
+              </div>
 
-          <div style="min-width:200px;">
-            <div style="font-size:12px; color:#666;">Phone (optional)</div>
-            <input id="reqPhone" type="tel" placeholder="Phone (optional)" style="width:200px;">
-          </div>
+              <div>
+                <div style="font-size:12px; color:#666;">Email (read-only)</div>
+                <input id="reqEmail" type="email" readonly style="width:100%;">
+              </div>
 
-          <div>
-            <button id="btnReserveCart" type="button">Reserve cart</button>
+              <div>
+                <div style="font-size:12px; color:#666;">Emory ID</div>
+                <input id="reqEmoryId" type="text" placeholder="Emory ID" style="width:100%;">
+              </div>
+
+              <div>
+                <div style="font-size:12px; color:#666;">Phone (optional)</div>
+                <input id="reqPhone" type="tel" placeholder="Phone (optional)" style="width:100%;">
+              </div>
+
+              <button id="btnReserveCart" type="button">Reserve cart</button>
+              <div class="muted" style="font-size:12px; line-height:1.4;">
+                Items are held for 48 hours pending staff review.
+              </div>
+            </div>
           </div>
         </div>
 
         <div id="reqStatus"></div>
       </section>
     </section>
-    
-    <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
-    <script type="module" src="./auth.js?v=cart3"></script>
 
+    <script type="module" src="./auth.js?v=cart3"></script>
   </div>
+
+  <!-- keep toast outside container to avoid future layout/transform issues -->
+  <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
