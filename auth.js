@@ -14,7 +14,7 @@ let CART = [];
 let LAST_INVENTORY = []; // keep latest inventory in memory
 
 // ===== Idle auto-logout (15 minutes) =====
-const IDLE_MS = 15 * 60 * 1000;
+const IDLE_MS =  900000;
 let __lastActiveAt = Date.now();
 let __idleTimer = null;
 
