@@ -28,7 +28,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 function $(id) { return document.getElementById(id); }
-let __toastTimer = null;
 
 function toast(message, kind = "info", ms = 2500) {
   const el = document.getElementById("toast");
@@ -353,6 +352,7 @@ function wireInventorySearch() {
 function setReqStatus(msg, kind = "info", autoClearMs = 0) {
   const el = $("reqStatus");
   if (!el) return;
+
   el.textContent = msg || "";
 
   el.style.border = "1px solid #eee";
@@ -360,15 +360,20 @@ function setReqStatus(msg, kind = "info", autoClearMs = 0) {
   if (kind === "success") { el.style.background = "#f3fff3"; el.style.border = "1px solid #cfeccf"; }
   if (kind === "error")   { el.style.background = "#fff3f3"; el.style.border = "1px solid #f0caca"; }
 
-  if (__toastTimer) clearTimeout(__toastTimer);
+  // store timer on the element to avoid global re-declaration issues
+  if (el.__ccTimer) clearTimeout(el.__ccTimer);
+  el.__ccTimer = null;
+
   if (autoClearMs > 0) {
-    __toastTimer = setTimeout(() => {
+    el.__ccTimer = setTimeout(() => {
       el.textContent = "";
       el.style.border = "1px solid #eee";
       el.style.background = "#f6f6f6";
+      el.__ccTimer = null;
     }, autoClearMs);
   }
 }
+
 
 function humanizeReserveError(raw) {
   const s = String(raw || "");
