@@ -7,6 +7,9 @@ const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
 const BUCKET = "career-closet";
 
+// 以 auth.js 所在目录作为站点根（更鲁棒：不依赖硬编码 /career-closet/）
+const BASE_URL = new URL(".", import.meta.url).href;
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
@@ -30,7 +33,7 @@ function cleanUrl() {
 }
 
 function getRedirectTo() {
-  return `${window.location.origin}/career-closet/auth/callback/`;
+  return `${BASE_URL}auth/callback/`;
 }
 
 async function handleAuthRedirect() {
@@ -75,7 +78,10 @@ async function handleAuthRedirect() {
 
 // ====== Inventory ======
 function buildPublicImageUrl(image_path) {
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${image_path}`;
+  if (!image_path) return "";
+  // 保留路径层级（/），但对空格等特殊字符进行编码
+  const encoded = encodeURIComponent(image_path).replaceAll("%2F", "/");
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}`;
 }
 function esc(s) {
   return String(s ?? "")
@@ -104,8 +110,8 @@ function renderInventory(items) {
         <div class="imgbox">
           ${
             imgUrl
-              ? `<img src="${imgUrl}" alt="${title}" loading="lazy"
-                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=muted>Image not found</div>';">`
+              ? `<img class="item-img" src="${imgUrl}" alt="${title}" loading="lazy">
+                 <div class="muted img-fallback" style="display:none;">Image not found</div>`
               : `<div class="muted">No image</div>`
           }
         </div>
@@ -123,6 +129,15 @@ function renderInventory(items) {
     `;
   }).join("");
 
+  // 图片加载失败时显示 fallback（避免 inline onerror，被 CSP 拦）
+  el.querySelectorAll(".item-img").forEach((img) => {
+    img.addEventListener("error", () => {
+      img.style.display = "none";
+      const fallback = img.parentElement?.querySelector(".img-fallback");
+      if (fallback) fallback.style.display = "block";
+    }, { once: true });
+  });
+
   el.querySelectorAll(".item-card").forEach((card) => {
     card.addEventListener("click", () => {
       const id = card.getAttribute("data-inventory-id") || "";
@@ -132,6 +147,20 @@ function renderInventory(items) {
       if (reqStatus) reqStatus.textContent = `Selected item: ${id}`;
       const sec = $("requestSection");
       if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+}
+
+function wireInventorySearch() {
+  const input = $("invSearch");
+  if (!input) return;
+
+  input.addEventListener("input", () => {
+    const q = (input.value || "").trim().toLowerCase();
+    const cards = document.querySelectorAll("#inventory .item-card");
+    cards.forEach((c) => {
+      const text = (c.textContent || "").toLowerCase();
+      c.style.display = q === "" || text.includes(q) ? "" : "none";
     });
   });
 }
@@ -260,12 +289,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     wireAuthEvents();
     wireRequestEvents();
+    wireInventorySearch();
 
     const established = await handleAuthRedirect();
     await refreshUi();
 
     if (window.location.pathname.includes("/auth/callback/") && established) {
-      window.location.replace("/career-closet/");
+      window.location.replace(BASE_URL);
     }
   } catch (e) {
     setStatus(`Error: ${e?.message || String(e)}`);
