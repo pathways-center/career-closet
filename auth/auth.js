@@ -1,10 +1,11 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-console.log("[auth.js] loaded:", location.href);
-console.log("[auth.js] MODE=MAGIC_LINK_IMPLICIT", "VERSION=20260107_implicit_final_1");
+console.log("[auth.js] loaded on", location.href);
 
+// ====== Supabase config ======
 const SUPABASE_URL = "https://qvyhnnvyyjjnzkmecoga.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3x48GzRMEQV1BYVmnrpJWQ_F7GJ5NFP";
+const BUCKET = "career-closet"; // your public bucket
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -13,93 +14,118 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-function $(id) {
-  return document.getElementById(id);
-}
+// ====== DOM helpers ======
+function $(id) { return document.getElementById(id); }
 
 function setStatus(msg) {
   const el = $("status");
   if (el) el.textContent = msg;
-  console.log("[status]", msg);
 }
 
-function cleanUrlRemoveQueryAndHash() {
-  const url = location.origin + location.pathname;
-  history.replaceState({}, document.title, url);
+function setSubStatus(msg) {
+  const el = $("subStatus");
+  if (el) el.textContent = msg || "";
 }
 
-/**
- * Handle Supabase Email Magic Link implicit flow:
- * callback URL looks like:
- *   /auth/callback/#access_token=...&refresh_token=...&expires_in=...&token_type=bearer&type=magiclink
- *
- * We must parse hash, call supabase.auth.setSession(), then remove hash.
- */
-async function handleMagicLinkHash() {
-  const hashStr = location.hash || "";
-  console.log("[auth] search=", location.search, "hash=", hashStr ? "(present)" : "(none)");
+function cleanUrl() {
+  const url = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, document.title, url);
+}
 
-  if (!hashStr || !hashStr.includes("access_token=")) return false;
+function getRedirectTo() {
+  // must be in Supabase Auth -> URL Configuration -> Redirect URLs
+  return `${window.location.origin}/career-closet/auth/callback/`;
+}
 
-  const hash = new URLSearchParams(hashStr.replace(/^#/, ""));
-  const access_token = hash.get("access_token");
-  const refresh_token = hash.get("refresh_token");
-
-  if (!access_token || !refresh_token) {
-    throw new Error("Magic link missing access_token or refresh_token in URL hash.");
-  }
+// ====== Auth redirect handler (PKCE code) ======
+async function handleAuthRedirect() {
+  const code = new URLSearchParams(location.search).get("code");
+  if (!code) return;
 
   setStatus("Signing you in...");
+  console.log("[auth] exchanging code for session...");
 
-  const { data, error } = await supabase.auth.setSession({
-    access_token,
-    refresh_token,
-  });
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  console.log("[auth] exchange result:", { hasSession: !!data?.session, error });
 
-  console.log("[auth] setSession:", { hasSession: !!data?.session, error });
-  cleanUrlRemoveQueryAndHash();
-
+  cleanUrl();
   if (error) throw error;
-  return true;
 }
 
-async function refreshUi() {
-  const { data } = await supabase.auth.getSession();
-  const session = data.session;
-  const btnLogin = $("btnLogin");
-  const btnLogout = $("btnLogout");
-  const elEmail = $("email");
-  if (!session) {
-    setStatus("Signed out");
-    setGate(false); 
-    if (btnLogin) btnLogin.disabled = false;
-    if (btnLogout) btnLogout.disabled = true;
-    if (elEmail) elEmail.disabled = false;
+// ====== Inventory rendering ======
+function buildPublicImageUrl(image_path) {
+  // image_path like: "items/MBzBe1.jpg"
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${image_path}`;
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderInventory(items) {
+  const el = $("inventory");
+  if (!el) return;
+
+  if (!items || items.length === 0) {
+    el.innerHTML = `<div class="muted">No items found.</div>`;
     return;
   }
-  const email = session.user?.email || "(unknown)";
-  setStatus(`Signed in as: ${email}`);
-  setGate(true); 
-  if (btnLogin) btnLogin.disabled = true;
-  if (btnLogout) btnLogout.disabled = false;
-  if (elEmail) elEmail.disabled = true;
+
+  el.innerHTML = items.map((row) => {
+    const imgUrl = row.image_path ? buildPublicImageUrl(row.image_path) : "";
+    const title = esc(row.inventory_id);
+    const brand = esc(row.brand);
+    const color = esc(row.color);
+    const size = esc(row.size);
+    const fit = esc(row.fit);
+    const category = esc(row.category);
+    const status = esc(row.status);
+
+    return `
+      <div class="card">
+        <div class="imgbox">
+          ${
+            imgUrl
+              ? `<img src="${imgUrl}" alt="${title}" loading="lazy"
+                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=muted>Image not found</div>';">`
+              : `<div class="muted">No image</div>`
+          }
+        </div>
+
+        <div style="margin-top:10px; font-weight:700;">${title}</div>
+        <div class="muted" style="margin-top:6px; line-height:1.4;">
+          <div><b>Brand:</b> ${brand || "-"}</div>
+          <div><b>Color:</b> ${color || "-"}</div>
+          <div><b>Size:</b> ${size || "-"}</div>
+          <div><b>Fit:</b> ${fit || "-"}</div>
+          <div><b>Category:</b> ${category || "-"}</div>
+          <div><b>Status:</b> ${status || "-"}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
+async function loadInventory() {
+  setSubStatus("Loading inventory...");
 
-function setGate(isAuthed) {
-  const publicView = document.getElementById("publicView");
-  const appView = document.getElementById("appView");
+  const { data, error } = await supabase
+    .from("items")
+    .select("inventory_id, brand, color, size, fit, category, status, image_path, created_at")
+    .order("created_at", { ascending: false });
 
-  if (publicView) publicView.style.display = isAuthed ? "none" : "block";
-  if (appView) appView.style.display = isAuthed ? "block" : "none";
+  if (error) throw error;
+
+  renderInventory(data);
+  setSubStatus("");
 }
 
-
-function getEmailRedirectTo() {
-  // Always send email back to callback page
-  return `${location.origin}/career-closet/auth/callback/`;
-}
-
+// ====== UI wiring ======
 function wireUiEvents() {
   const elEmail = $("email");
   const btnLogin = $("btnLogin");
@@ -114,63 +140,80 @@ function wireUiEvents() {
           return;
         }
 
-        const emailRedirectTo = getEmailRedirectTo();
-        setStatus("Sending magic link...");
-
+        const redirectTo = getRedirectTo();
         const { error } = await supabase.auth.signInWithOtp({
           email,
-          options: {
-            emailRedirectTo,
-            shouldCreateUser: true,
-          },
+          options: { emailRedirectTo: redirectTo },
         });
 
         if (error) throw error;
-
-        setStatus(`Magic link sent to: ${email}\nOpen the email and click "Log In".`);
+        setStatus(`Magic link sent to: ${email}`);
       } catch (e) {
-        console.error(e);
         setStatus(`Error: ${e?.message || String(e)}`);
+        console.error(e);
       }
     });
   }
 
   if (btnLogout) {
     btnLogout.addEventListener("click", async () => {
-      try {
-        await supabase.auth.signOut();
-        await refreshUi();
-      } catch (e) {
-        console.error(e);
-        setStatus(`Error: ${e?.message || String(e)}`);
-      }
+      await supabase.auth.signOut();
+      await refreshUi();
     });
   }
 }
 
-supabase.auth.onAuthStateChange((event) => {
-  console.log("[auth] onAuthStateChange:", event);
-  // 不 await，避免循环刷新卡 UI
-  refreshUi();
+async function refreshUi() {
+  const { data } = await supabase.auth.getSession();
+  const session = data.session;
+
+  const signedOutHint = $("signedOutHint");
+  const signedInArea = $("signedInArea");
+  const btnLogin = $("btnLogin");
+  const btnLogout = $("btnLogout");
+  const elEmail = $("email");
+
+  if (!session) {
+    setStatus("Signed out");
+    if (signedOutHint) signedOutHint.style.display = "block";
+    if (signedInArea) signedInArea.style.display = "none";
+
+    if (btnLogin) btnLogin.disabled = false;
+    if (btnLogout) btnLogout.disabled = true;
+    if (elEmail) elEmail.disabled = false;
+
+    return;
+  }
+
+  const email = session.user?.email || "(unknown)";
+  setStatus(`Signed in as: ${email}`);
+  if (signedOutHint) signedOutHint.style.display = "none";
+  if (signedInArea) signedInArea.style.display = "block";
+
+  if (btnLogin) btnLogin.disabled = true;
+  if (btnLogout) btnLogout.disabled = false;
+  if (elEmail) elEmail.disabled = true;
+
+  await loadInventory();
+}
+
+// ====== keep UI synced ======
+supabase.auth.onAuthStateChange(async () => {
+  await refreshUi();
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     wireUiEvents();
-
-    // 1) If on callback with hash tokens, set session
-    const handled = await handleMagicLinkHash();
-
-    // 2) Update UI
+    await handleAuthRedirect();
     await refreshUi();
 
-    // 3) If we are on callback page and login succeeded -> redirect home
-    if (handled && location.pathname.endsWith("/career-closet/auth/callback/")) {
-      setStatus("Signed in. Redirecting...");
-      location.replace("/career-closet/");
+    // If user is on callback page, send back to home after session established
+    if (window.location.pathname.endsWith("/auth/callback/")) {
+      window.location.replace("/career-closet/");
     }
   } catch (e) {
-    console.error(e);
     setStatus(`Error: ${e?.message || String(e)}`);
+    console.error(e);
   }
 });
