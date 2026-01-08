@@ -9,11 +9,14 @@ const IS_CALLBACK_PAGE = window.location.pathname.includes("/auth/callback/");
 const PROJECT_REF = new URL(SUPABASE_URL).hostname.split(".")[0];
 const STORAGE_KEY = `sb-${PROJECT_REF}-auth-token`;
 
+let CURRENT_USER_ID = null;
+let CART = [];
+let LAST_INVENTORY = []; // keep latest inventory in memory
+
 function safePageId() {
   const hasToken = (window.location.hash || "").includes("access_token=");
   return `${window.location.origin}${window.location.pathname}${hasToken ? " (hash_has_token)" : ""}`;
 }
-
 console.log("[auth.js] loaded on", safePageId());
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -24,16 +27,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-function $(id) {
-  return document.getElementById(id);
-}
+function $(id) { return document.getElementById(id); }
 
 function setStatus(msg) {
   const el = $("status");
   if (el) el.textContent = msg ?? "";
   console.log("[status]", msg ?? "");
 }
-
 function setSubStatus(msg) {
   const el = $("subStatus");
   if (el) el.textContent = msg ?? "";
@@ -44,10 +44,7 @@ function cleanUrlKeepPath() {
   const url = window.location.origin + window.location.pathname;
   window.history.replaceState({}, document.title, url);
 }
-
-function getRedirectTo() {
-  return `${BASE_URL}auth/callback/`;
-}
+function getRedirectTo() { return `${BASE_URL}auth/callback/`; }
 
 function getStoredSession() {
   try {
@@ -56,30 +53,10 @@ function getStoredSession() {
     const s = JSON.parse(raw);
     if (!s || !s.access_token) return null;
     return s;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
-
 function clearStoredSession() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {}
-}
-
-/** ✅ 从 access_token(JWT) 解析 email（你现在 session.user 没有，就用这个） */
-function parseJwtPayload(token) {
-  try {
-    const parts = String(token || "").split(".");
-    if (parts.length < 2) return {};
-    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = b64.length % 4;
-    if (pad) b64 += "=".repeat(4 - pad);
-    const json = atob(b64);
-    return JSON.parse(json);
-  } catch {
-    return {};
-  }
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
 }
 
 function storeSessionFromHash() {
@@ -93,13 +70,8 @@ function storeSessionFromHash() {
     expires_at_from_hash > 0 ? expires_at_from_hash : Math.floor(Date.now() / 1000) + expires_in;
 
   const err = hashParams.get("error_description") || hashParams.get("error");
-  if (err) {
-    return { ok: false, error: `Auth error: ${err}` };
-  }
-
-  if (!access_token) {
-    return { ok: false, error: "No access_token found in URL hash." };
-  }
+  if (err) return { ok: false, error: `Auth error: ${err}` };
+  if (!access_token) return { ok: false, error: "No access_token found in URL hash." };
 
   const session = {
     access_token,
@@ -109,14 +81,11 @@ function storeSessionFromHash() {
     expires_at,
     provider_token: null,
     provider_refresh_token: null,
-    user: null, // 你这里就是 null，所以别用 session.user.email
+    user: null,
   };
 
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  } catch (e) {
-    return { ok: false, error: `Failed to write session to localStorage: ${e?.message || String(e)}` };
-  }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); }
+  catch (e) { return { ok: false, error: `Failed to write session to localStorage: ${e?.message || String(e)}` }; }
 
   return { ok: true };
 }
@@ -139,19 +108,13 @@ function esc(s) {
 async function fetchJson(url, { headers = {}, timeoutMs = 12000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("fetch timeout")), timeoutMs);
-
   try {
     const res = await fetch(url, { headers, signal: controller.signal });
     const text = await res.text();
     let json = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      json = null;
-    }
+    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
     if (!res.ok) {
-      const detail =
-        (json && (json.message || json.error_description || json.error)) || text || res.statusText;
+      const detail = (json && (json.message || json.error_description || json.error)) || text || res.statusText;
       throw new Error(`HTTP ${res.status}: ${detail}`);
     }
     return json;
@@ -160,11 +123,98 @@ async function fetchJson(url, { headers = {}, timeoutMs = 12000 } = {}) {
   }
 }
 
+/* ===================== CART ===================== */
+
+function cartStorageKey() {
+  return CURRENT_USER_ID ? `cc-cart-${CURRENT_USER_ID}` : "cc-cart-guest";
+}
+function loadCart() {
+  try {
+    const raw = localStorage.getItem(cartStorageKey());
+    CART = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(CART)) CART = [];
+  } catch { CART = []; }
+  CART = Array.from(new Set(CART.map(x => String(x).trim()).filter(Boolean)));
+  if (CART.length > 5) CART = CART.slice(0, 5);
+}
+function saveCart() {
+  try { localStorage.setItem(cartStorageKey(), JSON.stringify(CART)); } catch {}
+}
+function updateCartBadge() {
+  const el = $("cartCount");
+  if (el) el.textContent = String(CART.length);
+}
+function addToCart(id) {
+  id = String(id || "").trim();
+  if (!id) return;
+
+  const out = $("reqStatus");
+  if (CART.includes(id)) {
+    if (out) out.textContent = `Already in cart: ${id}`;
+    return;
+  }
+  if (CART.length >= 5) {
+    if (out) out.textContent = "Cart limit: max 5 items.";
+    return;
+  }
+
+  CART.push(id);
+  saveCart();
+  renderCart();
+  updateCartBadge();
+
+  if (out) out.textContent = `Added to cart: ${id}`;
+}
+function removeFromCart(id) {
+  CART = CART.filter(x => x !== id);
+  saveCart();
+  renderCart();
+  updateCartBadge();
+}
+function clearCart() {
+  CART = [];
+  saveCart();
+  renderCart();
+  updateCartBadge();
+}
+function renderCart() {
+  const list = $("cartList");
+  if (!list) return;
+
+  if (!CART.length) {
+    list.innerHTML = `<div class="muted">Cart is empty.</div>`;
+    return;
+  }
+
+  // Optional: show some item details if we have LAST_INVENTORY
+  const byId = new Map(LAST_INVENTORY.map(x => [x.inventory_id, x]));
+
+  list.innerHTML = CART.map((id) => {
+    const row = byId.get(id);
+    const sub = row ? `${esc(row.brand || "-")} · ${esc(row.size || "-")} · ${esc(row.color || "-")}` : "";
+    return `
+      <div class="cartline">
+        <div>
+          <div style="font-weight:800;">${esc(id)}</div>
+          ${sub ? `<div class="muted" style="font-size:12px; margin-top:2px;">${sub}</div>` : ""}
+        </div>
+        <div class="right"></div>
+        <button type="button" class="btn-sm" data-remove="${esc(id)}">Remove</button>
+      </div>
+    `;
+  }).join("");
+
+  list.querySelectorAll("button[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => removeFromCart(btn.getAttribute("data-remove")));
+  });
+}
+
+/* ===================== INVENTORY ===================== */
+
 async function loadInventoryViaRest(accessToken) {
   setSubStatus("Loading inventory...");
 
-  const select =
-    "inventory_id,brand,color,size,fit,category,status,image_path,created_at";
+  const select = "inventory_id,brand,color,size,fit,category,status,image_path,created_at";
   const url =
     `${SUPABASE_URL}/rest/v1/items` +
     `?select=${encodeURIComponent(select)}` +
@@ -174,13 +224,15 @@ async function loadInventoryViaRest(accessToken) {
     apikey: SUPABASE_ANON_KEY,
     Accept: "application/json",
   };
-
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const data = await fetchJson(url, { headers, timeoutMs: 12000 });
-  renderInventory(Array.isArray(data) ? data : []);
+  LAST_INVENTORY = Array.isArray(data) ? data : [];
+
+  renderInventory(LAST_INVENTORY);
+  renderCart();          // keep cart view in sync with latest item info
+  updateCartBadge();
+
   setSubStatus("");
 }
 
@@ -193,13 +245,23 @@ function renderInventory(items) {
     return;
   }
 
-  el.innerHTML = items
-    .map((row) => {
-      const imgUrl = row.image_path ? buildPublicImageUrl(row.image_path) : "";
-      const title = esc(row.inventory_id);
+  el.innerHTML = items.map((row) => {
+    const imgUrl = row.image_path ? buildPublicImageUrl(row.image_path) : "";
+    const id = String(row.inventory_id || "");
+    const title = esc(id);
+    const status = String(row.status || "").toLowerCase();
+    const canAdd = status === "available"; // MVP: only available can be added
 
-      return `
-      <div class="item-card" data-inventory-id="${title}">
+    const addBtn = `
+      <button type="button" class="btn-sm"
+        data-add="${title}"
+        ${(!canAdd || CART.includes(id)) ? "disabled" : ""}>
+        ${CART.includes(id) ? "In cart" : (canAdd ? "Add to cart" : "Not available")}
+      </button>
+    `;
+
+    return `
+      <div class="item-card">
         <div class="imgbox">
           ${
             imgUrl
@@ -210,6 +272,7 @@ function renderInventory(items) {
         </div>
 
         <div style="margin-top:10px; font-weight:800;">${title}</div>
+
         <div class="muted" style="margin-top:6px; line-height:1.4;">
           <div><b>Brand:</b> ${esc(row.brand) || "-"}</div>
           <div><b>Color:</b> ${esc(row.color) || "-"}</div>
@@ -218,33 +281,24 @@ function renderInventory(items) {
           <div><b>Category:</b> ${esc(row.category) || "-"}</div>
           <div><b>Status:</b> ${esc(row.status) || "-"}</div>
         </div>
+
+        <div class="row" style="margin-top:10px;">
+          ${addBtn}
+        </div>
       </div>
     `;
-    })
-    .join("");
+  }).join("");
 
   el.querySelectorAll(".item-img").forEach((img) => {
-    img.addEventListener(
-      "error",
-      () => {
-        img.style.display = "none";
-        const fallback = img.parentElement?.querySelector(".img-fallback");
-        if (fallback) fallback.style.display = "block";
-      },
-      { once: true }
-    );
+    img.addEventListener("error", () => {
+      img.style.display = "none";
+      const fallback = img.parentElement?.querySelector(".img-fallback");
+      if (fallback) fallback.style.display = "block";
+    }, { once: true });
   });
 
-  el.querySelectorAll(".item-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const id = card.getAttribute("data-inventory-id") || "";
-      const reqItemId = $("reqItemId");
-      const reqStatus = $("reqStatus");
-      if (reqItemId) reqItemId.value = id;
-      if (reqStatus) reqStatus.textContent = `Selected item: ${id}`;
-      const sec = $("requestSection");
-      if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+  el.querySelectorAll("button[data-add]").forEach((btn) => {
+    btn.addEventListener("click", () => addToCart(btn.getAttribute("data-add")));
   });
 }
 
@@ -262,130 +316,99 @@ function wireInventorySearch() {
   });
 }
 
-function wireRequestEvents() {
-  const btnPreview = $("btnSubmitRequest");
-  const btnReserve = $("btnReserve");
-  const out = $("reqStatus");
+/* ===================== RESERVE CART ===================== */
 
-  if (!btnPreview && !btnReserve) return;
+function wireCartUiEvents() {
+  const btnOpenCart = $("btnOpenCart");
+  const btnClearCart = $("btnClearCart");
+  const btnReserveCart = $("btnReserveCart");
 
-  function getFormValues() {
-    return {
-      itemId: ($("reqItemId")?.value || "").trim(),
-      date: ($("reqDate")?.value || "").trim(),        // YYYY-MM-DD
-      start: ($("reqStart")?.value || "").trim(),      // HH:MM
-      end: ($("reqEnd")?.value || "").trim(),          // HH:MM
-      fullName: ($("reqFullName")?.value || "").trim(),
-      emoryId: ($("reqEmoryId")?.value || "").trim(),
-      phone: ($("reqPhone")?.value || "").trim(),
-    };
-  }
-
-  function validatePreview(v) {
-    if (!v.itemId) return "Please select an item.";
-    if (!v.date || !v.start || !v.end) return "Please pick Date + Start + End.";
-
-    const d1 = new Date(`${v.date}T${v.start}:00`);
-    const d2 = new Date(`${v.date}T${v.end}:00`);
-    if (!(d2 > d1)) return "End time must be after Start time.";
-
-    return null;
-  }
-
-  function renderPreview(v) {
-    const err = validatePreview(v);
-    if (err) {
-      if (out) out.textContent = err;
-      return;
-    }
-
-    const d1 = new Date(`${v.date}T${v.start}:00`);
-    const d2 = new Date(`${v.date}T${v.end}:00`);
-
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    if (out) {
-      out.textContent =
-        `Request preview (Atlanta time)\n` +
-        `Item: ${v.itemId}\n` +
-        `Start: ${fmt.format(d1)}\n` +
-        `End:   ${fmt.format(d2)}\n`;
-    }
-  }
-
-  async function submitReservationSingle(v) {
-    if (!v.itemId) { if (out) out.textContent = "Please select an item."; return; }
-    if (!v.date) { if (out) out.textContent = "Please select a pickup date."; return; }
-    if (!v.fullName) { if (out) out.textContent = "Full name is required."; return; }
-    if (!v.emoryId) { if (out) out.textContent = "Emory ID is required."; return; }
-
-    // ✅ 用你本地存的 session，避免 supabase.auth.getSession() 不同步
-    const stored = getStoredSession();
-    const accessToken = stored?.access_token || "";
-    if (!accessToken) {
-      if (out) out.textContent = "Not signed in.";
-      return;
-    }
-
-    if (out) out.textContent = "Submitting reservation...";
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-reservation`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "authorization": `Bearer ${accessToken}`,
-        "apikey": SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        cart_items: [v.itemId],
-        full_name: v.fullName,
-        emory_id: v.emoryId,
-        phone: v.phone,
-        pickup_date: v.date,
-        pickup_time: v.start || null, // 你暂时用 start 当 pickup_time
-      }),
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      if (out) out.textContent = `Reserve failed: ${json?.error || res.statusText}`;
-      return;
-    }
-
-    if (out) out.textContent = `Reserved OK. Reservation ID: ${json?.result?.reservation_id ?? "?"}`;
-
-    // ✅ 修掉你原来 await loadInventory() 的不存在函数
-    await loadInventoryViaRest(accessToken);
-  }
-
-  if (btnPreview) {
-    btnPreview.addEventListener("click", () => {
-      const v = getFormValues();
-      renderPreview(v);
+  if (btnOpenCart) {
+    btnOpenCart.addEventListener("click", () => {
+      const sec = $("requestSection");
+      if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
-  if (btnReserve) {
-    btnReserve.addEventListener("click", async () => {
+  if (btnClearCart) {
+    btnClearCart.addEventListener("click", () => {
+      clearCart();
+      const out = $("reqStatus");
+      if (out) out.textContent = "Cart cleared.";
+      // also refresh buttons state
+      renderInventory(LAST_INVENTORY);
+    });
+  }
+
+  if (btnReserveCart) {
+    btnReserveCart.addEventListener("click", async () => {
       try {
-        const v = getFormValues();
-        await submitReservationSingle(v);
+        await submitReservationCart();
       } catch (e) {
+        const out = $("reqStatus");
         if (out) out.textContent = `Error: ${e?.message || String(e)}`;
         console.error(e);
       }
     });
   }
 }
+
+async function submitReservationCart() {
+  const out = $("reqStatus");
+
+  if (!CART.length) { if (out) out.textContent = "Cart is empty."; return; }
+  if (CART.length > 5) { if (out) out.textContent = "Cart limit: max 5 items."; return; }
+
+  const pickupDate = ($("reqDate")?.value || "").trim();       // YYYY-MM-DD
+  const pickupTime = ($("reqStart")?.value || "").trim();      // HH:MM (optional)
+  const fullName = ($("reqFullName")?.value || "").trim();
+  const emoryId = ($("reqEmoryId")?.value || "").trim();
+  const phone = ($("reqPhone")?.value || "").trim();
+
+  if (!pickupDate) { if (out) out.textContent = "Please select a pickup date."; return; }
+  if (!fullName) { if (out) out.textContent = "Full name is required."; return; }
+  if (!emoryId) { if (out) out.textContent = "Emory ID is required."; return; }
+
+  const { data: sessData, error: sessErr } = await supabase.auth.getSession();
+  if (sessErr || !sessData?.session?.access_token) {
+    if (out) out.textContent = "Not signed in.";
+    return;
+  }
+  const accessToken = sessData.session.access_token;
+
+  if (out) out.textContent = "Submitting reservation...";
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-reservation`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "authorization": `Bearer ${accessToken}`,
+      "apikey": SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      cart_items: CART,               // ✅ 一次提交多个
+      full_name: fullName,
+      emory_id: emoryId,
+      phone: phone,
+      pickup_date: pickupDate,
+      pickup_time: pickupTime || null,
+    }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (out) out.textContent = `Reserve failed: ${json?.error || res.statusText}`;
+    return;
+  }
+
+  if (out) out.textContent = `Reserved OK. Reservation ID: ${json?.result?.reservation_id ?? "?"}`;
+
+  clearCart();
+  renderInventory(LAST_INVENTORY); // refresh "In cart" buttons
+  await loadInventoryViaRest(accessToken);
+}
+
+/* ===================== AUTH ===================== */
 
 function wireAuthEvents() {
   const elEmail = $("email");
@@ -396,10 +419,7 @@ function wireAuthEvents() {
     btnLogin.addEventListener("click", async () => {
       try {
         const email = (elEmail.value || "").trim().toLowerCase();
-        if (!email) {
-          setStatus("Please enter an email.");
-          return;
-        }
+        if (!email) { setStatus("Please enter an email."); return; }
 
         setStatus("Sending magic link...");
         setSubStatus("");
@@ -409,8 +429,8 @@ function wireAuthEvents() {
           email,
           options: { emailRedirectTo: redirectTo },
         });
-
         if (error) throw error;
+
         setStatus(`Magic link sent to: ${email}`);
       } catch (e) {
         setStatus(`Error: ${e?.message || String(e)}`);
@@ -421,7 +441,12 @@ function wireAuthEvents() {
 
   if (btnLogout) {
     btnLogout.addEventListener("click", async () => {
+      // clear our local stored session & cart
       clearStoredSession();
+      CURRENT_USER_ID = null;
+      CART = [];
+      try { localStorage.removeItem("cc-cart-guest"); } catch {}
+
       try {
         await Promise.race([
           supabase.auth.signOut(),
@@ -441,34 +466,59 @@ async function refreshUi() {
   const signedOutHint = $("signedOutHint");
   const signedInArea = $("signedInArea");
   const whoamiHint = $("whoamiHint");
-  const reqEmail = $("reqEmail"); // ✅ 你的 HTML 已经有了这个 readonly input
 
   if (!session) {
+    CURRENT_USER_ID = null;
+    CART = [];
+    updateCartBadge();
+    renderCart();
+
     setStatus("Signed out");
     setSubStatus("");
 
     if (signedOutHint) signedOutHint.style.display = "block";
     if (signedInArea) signedInArea.style.display = "none";
-
-    if (whoamiHint) whoamiHint.textContent = "Welcome!";
-    if (reqEmail) reqEmail.value = "";
     return;
   }
-
-  // ✅ 从 token 解析 email
-  const claims = parseJwtPayload(session.access_token);
-  const email = (claims.email || "").toLowerCase();
 
   setStatus("Signed in");
   setSubStatus("");
 
-  if (whoamiHint) whoamiHint.textContent = email ? `Welcome: ${email}` : "Authenticated";
+  // get user email + id from JWT by calling auth.getUser with anon key
+  const { data: userData, error: userErr } = await supabase.auth.getUser(session.access_token);
+  if (userErr || !userData?.user) {
+    // token invalid => force logout locally
+    clearStoredSession();
+    CURRENT_USER_ID = null;
+    CART = [];
+    updateCartBadge();
+    renderCart();
+
+    setStatus("Signed out");
+    setSubStatus("Session invalid. Please sign in again.");
+    if (signedOutHint) signedOutHint.style.display = "block";
+    if (signedInArea) signedInArea.style.display = "none";
+    return;
+  }
+
+  const user = userData.user;
+  const email = (user.email || "").toLowerCase();
+  CURRENT_USER_ID = user.id;
+
+  // load cart for this user
+  loadCart();
+  updateCartBadge();
+
+  // fill readonly email in form
+  const reqEmail = $("reqEmail");
   if (reqEmail) reqEmail.value = email || "";
 
+  if (whoamiHint) whoamiHint.textContent = email ? `Welcome: ${email}` : "Authenticated";
   if (signedOutHint) signedOutHint.style.display = "none";
   if (signedInArea) signedInArea.style.display = "block";
 
   await loadInventoryViaRest(session.access_token);
+  renderCart();
 }
 
 async function handleCallbackPage() {
@@ -488,6 +538,8 @@ async function handleCallbackPage() {
   window.location.replace(BASE_URL);
 }
 
+/* ===================== BOOT ===================== */
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     if (IS_CALLBACK_PAGE) {
@@ -496,7 +548,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     wireAuthEvents();
-    wireRequestEvents();
+    wireCartUiEvents();
     wireInventorySearch();
 
     await refreshUi();
