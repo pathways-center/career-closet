@@ -134,19 +134,6 @@
     </section>
 
     <script type="module" src="./auth.js?v=inv3"></script>
-
-    <script>
-      document.addEventListener("input", (e) => {
-        if (e.target && e.target.id === "invSearch") {
-          const q = (e.target.value || "").trim().toLowerCase();
-          const cards = document.querySelectorAll("#inventory .item-card");
-          cards.forEach((c) => {
-            const text = (c.textContent || "").toLowerCase();
-            c.style.display = q === "" || text.includes(q) ? "" : "none";
-          });
-        }
-      });
-    </script>
   </div>
 </body>
 </html>
