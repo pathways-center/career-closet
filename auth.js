@@ -6,6 +6,8 @@ const BUCKET = "career-closet";
 
 const BASE_URL = new URL(".", import.meta.url).href;
 const IS_CALLBACK_PAGE = window.location.pathname.includes("/auth/callback/");
+const PROJECT_REF = new URL(SUPABASE_URL).hostname.split(".")[0];
+const STORAGE_KEY = `sb-${PROJECT_REF}-auth-token`;
 
 function safePageId() {
   const hasToken = (window.location.hash || "").includes("access_token=");
@@ -14,34 +16,11 @@ function safePageId() {
 
 console.log("[auth.js] loaded on", safePageId());
 
-function createLoggedFetch(timeoutMs = 12000) {
-  return async (input, init = {}) => {
-    const url = typeof input === "string" ? input : input?.url;
-    const method = init.method || "GET";
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("fetch timeout")), timeoutMs);
-
-    console.log("[fetch:start]", method, url);
-
-    try {
-      const res = await fetch(input, { ...init, signal: controller.signal });
-      console.log("[fetch:end]", method, url, res.status);
-      return res;
-    } catch (e) {
-      console.log("[fetch:err]", method, url, e?.message || String(e));
-      throw e;
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-}
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  global: { fetch: createLoggedFetch(12000) },
   auth: {
     persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
   },
 });
 
@@ -70,61 +49,61 @@ function getRedirectTo() {
   return `${BASE_URL}auth/callback/`;
 }
 
-function withTimeout(promise, ms, label) {
-  let t;
-  const timeout = new Promise((_, reject) => {
-    t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+function getStoredSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || !s.access_token) return null;
+    return s;
+  } catch {
+    return null;
+  }
 }
 
-async function handleAuthRedirect() {
+function clearStoredSession() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
+
+function storeSessionFromHash() {
   const hashParams = new URLSearchParams((location.hash || "").replace(/^#/, ""));
   const access_token = hashParams.get("access_token");
   const refresh_token = hashParams.get("refresh_token");
+  const token_type = hashParams.get("token_type") || "bearer";
+  const expires_in = Number(hashParams.get("expires_in") || "3600");
+  const expires_at_from_hash = Number(hashParams.get("expires_at") || "0");
+  const expires_at =
+    expires_at_from_hash > 0 ? expires_at_from_hash : Math.floor(Date.now() / 1000) + expires_in;
+
   const err = hashParams.get("error_description") || hashParams.get("error");
-
   if (err) {
-    setStatus(`Auth error: ${err}`);
-    cleanUrlKeepPath();
-    return { established: false };
+    return { ok: false, error: `Auth error: ${err}` };
   }
 
-  if (access_token && refresh_token) {
-    setStatus("Signing you in...");
-    setSubStatus("Setting session from hash tokens...");
-
-    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-
-    console.log("[auth] setSession result:", { ok: !error, error });
-    if (error) throw error;
-
-    const { data } = await withTimeout(supabase.auth.getSession(), 15000, "getSession");
-    console.log("[auth] getSession after setSession:", { hasSession: !!data?.session });
-
-    cleanUrlKeepPath();
-    return { established: true };
+  if (!access_token) {
+    return { ok: false, error: "No access_token found in URL hash." };
   }
 
-  const code = new URLSearchParams(location.search).get("code");
-  if (code) {
-    setStatus("Signing you in...");
-    setSubStatus("Exchanging code for session...");
+  const session = {
+    access_token,
+    refresh_token: refresh_token || "",
+    token_type,
+    expires_in,
+    expires_at,
+    provider_token: null,
+    provider_refresh_token: null,
+    user: null,
+  };
 
-    const { data, error } = await withTimeout(
-      supabase.auth.exchangeCodeForSession(code),
-      15000,
-      "exchangeCodeForSession"
-    );
-
-    console.log("[auth] exchangeCodeForSession:", { hasSession: !!data?.session, error });
-    if (error) throw error;
-
-    cleanUrlKeepPath();
-    return { established: true };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch (e) {
+    return { ok: false, error: `Failed to write session to localStorage: ${e?.message || String(e)}` };
   }
 
-  return { established: false };
+  return { ok: true };
 }
 
 function buildPublicImageUrl(image_path) {
@@ -140,6 +119,54 @@ function esc(s) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function fetchJson(url, { headers = {}, timeoutMs = 12000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("fetch timeout")), timeoutMs);
+
+  try {
+    const res = await fetch(url, { headers, signal: controller.signal });
+    const text = await res.text();
+    let json = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+    if (!res.ok) {
+      const detail =
+        (json && (json.message || json.error_description || json.error)) || text || res.statusText;
+      throw new Error(`HTTP ${res.status}: ${detail}`);
+    }
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadInventoryViaRest(accessToken) {
+  setSubStatus("Loading inventory...");
+
+  const select =
+    "inventory_id,brand,color,size,fit,category,status,image_path,created_at";
+  const url =
+    `${SUPABASE_URL}/rest/v1/items` +
+    `?select=${encodeURIComponent(select)}` +
+    `&order=${encodeURIComponent("created_at.desc")}`;
+
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Accept: "application/json",
+  };
+
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  const data = await fetchJson(url, { headers, timeoutMs: 12000 });
+  renderInventory(Array.isArray(data) ? data : []);
+  setSubStatus("");
 }
 
 function renderInventory(items) {
@@ -218,20 +245,6 @@ function wireInventorySearch() {
       c.style.display = q === "" || text.includes(q) ? "" : "none";
     });
   });
-}
-
-async function loadInventory() {
-  setSubStatus("Loading inventory...");
-
-  const { data, error } = await supabase
-    .from("items")
-    .select("inventory_id, brand, color, size, fit, category, status, image_path, created_at")
-    .order("created_at", { ascending: false });
-
-  if (error) throw error;
-
-  renderInventory(data);
-  setSubStatus("");
 }
 
 function wireRequestEvents() {
@@ -316,15 +329,22 @@ function wireAuthEvents() {
 
   if (btnLogout) {
     btnLogout.addEventListener("click", async () => {
-      await supabase.auth.signOut();
+      clearStoredSession();
+      try {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("signOut timeout")), 6000)),
+        ]);
+      } catch (e) {
+        console.log("[logout]", e?.message || String(e));
+      }
       await refreshUi();
     });
   }
 }
 
 async function refreshUi() {
-  const { data } = await supabase.auth.getSession();
-  const session = data.session;
+  const session = getStoredSession();
 
   const signedOutHint = $("signedOutHint");
   const signedInArea = $("signedInArea");
@@ -339,38 +359,43 @@ async function refreshUi() {
     return;
   }
 
-  const email = session.user?.email || "(unknown)";
-  setStatus(`Signed in as: ${email}`);
+  setStatus("Signed in");
   setSubStatus("");
-  if (whoamiHint) whoamiHint.textContent = email;
 
+  if (whoamiHint) whoamiHint.textContent = "Authenticated";
   if (signedOutHint) signedOutHint.style.display = "none";
   if (signedInArea) signedInArea.style.display = "block";
 
-  await loadInventory();
+  await loadInventoryViaRest(session.access_token);
+}
+
+async function handleCallbackPage() {
+  setStatus("Signing you in...");
+  setSubStatus("Saving session locally...");
+
+  const res = storeSessionFromHash();
+  cleanUrlKeepPath();
+
+  if (!res.ok) {
+    setStatus(`Error: ${res.error}`);
+    setSubStatus("");
+    return;
+  }
+
+  setSubStatus("Redirecting...");
+  window.location.replace(BASE_URL);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     if (IS_CALLBACK_PAGE) {
-      const { established } = await handleAuthRedirect();
-      if (established) {
-        setSubStatus("Redirecting...");
-        window.location.replace(BASE_URL);
-        return;
-      }
-      setStatus("No auth tokens found in URL.");
-      setSubStatus("");
+      await handleCallbackPage();
       return;
     }
 
     wireAuthEvents();
     wireRequestEvents();
     wireInventorySearch();
-
-    supabase.auth.onAuthStateChange(async () => {
-      await refreshUi();
-    });
 
     await refreshUi();
   } catch (e) {
