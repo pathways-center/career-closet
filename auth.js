@@ -13,6 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: true,
   },
 });
 
@@ -32,13 +33,21 @@ function setSubStatus(msg) {
   console.log("[subStatus]", msg ?? "");
 }
 
-function cleanUrl() {
+function cleanUrlKeepPath() {
   const url = window.location.origin + window.location.pathname;
   window.history.replaceState({}, document.title, url);
 }
 
 function getRedirectTo() {
   return `${BASE_URL}auth/callback/`;
+}
+
+function withTimeout(promise, ms, label) {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
 
 async function handleAuthRedirect() {
@@ -49,20 +58,28 @@ async function handleAuthRedirect() {
 
   if (err) {
     setStatus(`Auth error: ${err}`);
-    cleanUrl();
-    return false;
+    cleanUrlKeepPath();
+    return { established: false };
   }
 
   if (access_token && refresh_token) {
     setStatus("Signing you in...");
     setSubStatus("Setting session from hash tokens...");
 
-    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-    console.log("[auth] setSession from hash:", { ok: !error, error });
+    const { error } = await withTimeout(
+      supabase.auth.setSession({ access_token, refresh_token }),
+      15000,
+      "setSession"
+    );
 
-    cleanUrl();
+    console.log("[auth] setSession from hash:", { ok: !error, error });
     if (error) throw error;
-    return true;
+
+    const { data } = await withTimeout(supabase.auth.getSession(), 15000, "getSession");
+    console.log("[auth] getSession after setSession:", { hasSession: !!data?.session });
+
+    cleanUrlKeepPath();
+    return { established: true };
   }
 
   const code = new URLSearchParams(location.search).get("code");
@@ -70,15 +87,20 @@ async function handleAuthRedirect() {
     setStatus("Signing you in...");
     setSubStatus("Exchanging code for session...");
 
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    console.log("[auth] exchangeCodeForSession:", { hasSession: !!data?.session, error });
+    const { data, error } = await withTimeout(
+      supabase.auth.exchangeCodeForSession(code),
+      15000,
+      "exchangeCodeForSession"
+    );
 
-    cleanUrl();
+    console.log("[auth] exchangeCodeForSession:", { hasSession: !!data?.session, error });
     if (error) throw error;
-    return true;
+
+    cleanUrlKeepPath();
+    return { established: true };
   }
 
-  return false;
+  return { established: false };
 }
 
 function buildPublicImageUrl(image_path) {
@@ -301,27 +323,29 @@ async function refreshUi() {
   if (signedOutHint) signedOutHint.style.display = "none";
   if (signedInArea) signedInArea.style.display = "block";
 
-  if (!IS_CALLBACK_PAGE) {
-    await loadInventory();
-  }
+  await loadInventory();
 }
-
-supabase.auth.onAuthStateChange(async () => {
-  await refreshUi();
-});
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
+    if (IS_CALLBACK_PAGE) {
+      const { established } = await handleAuthRedirect();
+      if (established) {
+        setSubStatus("Redirecting...");
+        window.location.replace(BASE_URL);
+        return;
+      }
+      setStatus("No auth tokens found in URL.");
+      return;
+    }
+
     wireAuthEvents();
     wireRequestEvents();
     wireInventorySearch();
 
-    const established = await handleAuthRedirect();
-
-    if (IS_CALLBACK_PAGE && established) {
-      window.location.replace(BASE_URL);
-      return;
-    }
+    supabase.auth.onAuthStateChange(async () => {
+      await refreshUi();
+    });
 
     await refreshUi();
   } catch (e) {
